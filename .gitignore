@@ -1,0 +1,35 @@
+# Objetos y dependencias generadas
+build/
+*.o
+*.d
+*.a
+*.so
+
+# Ejecutables (se generan en la raíz)
+/dsm_manager
+/app_counter
+/app_pi
+/app_rw
+/app_granularity
+
+# Sanitizers y depuración
+*.dSYM/
+core
+core.*
+vgcore.*
+
+# Registros y resultados masivos: solo se versionan los seleccionados para
+# el informe. Los CSV de una corrida cualquiera no entran.
+*.csv
+logs/
+results/*
+!results/.gitkeep
+!results/seleccionados/
+
+# Entornos locales
+.vscode/
+.idea/
+.DS_Store
+*.swp
+__pycache__/
+.venv/
