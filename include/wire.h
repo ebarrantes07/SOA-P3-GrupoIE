@@ -1,9 +1,14 @@
-/* wire.h — formato de trama del protocolo DSM.
+/* wire.h — formato de trama del protocolo DSM. Encabezado INTERNO.
  *
- * Decisión documentada en docs/decisiones_diseno.md (D2). Este archivo es el
- * contrato entre el coordinador y la biblioteca del trabajador: lo congela E0
- * (#1) para que el transporte (#2) y el directorio (#3) puedan escribirse en
- * paralelo. Cambiarlo obliga a revisar los dos lados.
+ * Decisiones en docs/decisiones_diseno.md (D2, D12, D13, D14). Este archivo
+ * es el contrato entre el coordinador y la biblioteca del trabajador: lo
+ * congeló E0 (#1) y lo ajustó la revisión del PR #11. Cambiarlo obliga a
+ * revisar los dos lados.
+ *
+ * Una aplicación NO incluye este archivo: incluye dsm.h, que define la API y
+ * los límites públicos. La dirección del include es a propósito —wire.h toma
+ * los límites de dsm.h— para que el tamaño de página y los rangos existan en
+ * un solo lugar y no se desincronicen (D14).
  *
  * Reglas que vienen del enunciado y que este archivo hace cumplir:
  *
@@ -22,21 +27,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* ---- Límites del protocolo ------------------------------------------- */
+#include "dsm.h"
+
+/* ---- Límites del protocolo -------------------------------------------
+ *
+ * DSM_PAGE_SIZE, DSM_MIN/MAX_NODES y DSM_MIN/MAX_PAGES vienen de dsm.h. */
 
 #define DSM_WIRE_MAGIC      0x44534D33u   /* "DSM3" */
 #define DSM_WIRE_VERSION    1u
 #define DSM_HEADER_SIZE     32u
-
-/* Granularidad lógica del protocolo. El enunciado fija 4096 bytes y advierte
- * que no debe suponerse igual a la página del sistema operativo: aquí es un
- * número del protocolo, nada más. */
-#define DSM_PAGE_SIZE       4096u
-
-#define DSM_MIN_NODES       1u
-#define DSM_MAX_NODES       4u
-#define DSM_MIN_PAGES       1u
-#define DSM_MAX_PAGES       256u
 
 /* Carga máxima: una versión de 64 bits más una página completa, que es lo que
  * lleva una concesión con datos. Ninguna otra trama es mayor. */
@@ -57,26 +56,72 @@
  * Valores fijos de un byte. No se reordenan ni se reutilizan: un número
  * retirado queda retirado.
  *
- * Carga de cada tipo (todo entero en orden de red):
+ * Carga y uso de `aux` por tipo (todo entero en orden de red):
  *
- *   HELLO            W->C  8 bytes: u32 nodes_expected, u32 pages_expected
+ *   HELLO            W->C  8 bytes: u32 nodes_expected, u32 pages_expected.
+ *                          pages_expected = 0 significa "sin opinión", que es
+ *                          lo que manda la biblioteca: la región la define el
+ *                          coordinador. Si llega distinto de cero y no
+ *                          coincide con la configuración de la sesión, el
+ *                          coordinador rechaza el registro (D7).
  *   SESSION_START    C->W  24 bytes: u32 nodes, u32 pages, u32 page_size,
- *                          u32 reserved, u64 run_id
+ *                          u32 reserved, u64 run_id. De aquí toma el
+ *                          trabajador la cantidad de páginas.
  *   ACQ_REQ          W->C  8 bytes: u64 cached_version (DSM_NO_VERSION si no
  *                          hay copia válida). aux = modo (DSM_WIRE_MODE_*)
  *   ACQ_GRANT        C->W  8 bytes: u64 version; más DSM_PAGE_SIZE bytes de
  *                          página si flags trae DSM_WIRE_F_HAS_DATA
- *   INVALIDATE       C->W  sin carga. request_id = la solicitud que la causó
+ *   INVALIDATE       C->W  sin carga. node_id = destinatario;
+ *                          request_id = la solicitud que la causó;
+ *                          aux = node_id del nodo SOLICITANTE (D12)
  *   INVALIDATE_ACK   W->C  sin carga. request_id = el de la invalidación
  *   REL_WRITE        W->C  DSM_PAGE_SIZE bytes: la página completa
  *   REL_WRITE_ACK    C->W  8 bytes: u64 version ya publicada
  *   REL_READ         W->C  sin carga
  *   REL_READ_ACK     C->W  sin carga
- *   BARRIER_ARRIVE   W->C  8 bytes: u64 generation. aux = barrier_id
+ *   BARRIER_ARRIVE   W->C  8 bytes: u64 generation, contada por el propio
+ *                          trabajador para ese barrier_id. aux = barrier_id
  *   BARRIER_RELEASE  C->W  8 bytes: u64 generation. aux = barrier_id
  *   ERROR            C->W  0..DSM_ERR_DETAIL_MAX bytes de detalle UTF-8 sin
- *                          NUL. aux = código (dsm_status de dsm.h)
- *   BYE              W->C  sin carga
+ *                          NUL. aux = código (enum dsm_status de dsm.h, con
+ *                          sus valores explícitos; uno desconocido se trata
+ *                          como DSM_EPROTO)
+ *   BYE              W->C  sin carga. Salida ordenada, ver abajo.
+ *
+ *
+ * CORRELACIÓN (D12)
+ *
+ * Cada trabajador asigna sus propios request_id, así que un request_id solo
+ * identifica una operación junto con el nodo que la originó: la clave es
+ * (node_id solicitante, request_id). En las tramas que van del coordinador a
+ * un trabajador, `node_id` es el destinatario, no el solicitante — por eso
+ * INVALIDATE lleva al solicitante en `aux`. Sin ese campo, el log del
+ * coordinador no podría atribuir una invalidación a la solicitud WRITE que la
+ * causó sin llevar contabilidad aparte, y ese log es justamente lo que lee el
+ * verificador de invariantes.
+ *
+ * Para emparejar un INVALIDATE_ACK basta con (page_id, nodo que responde,
+ * request_id), porque el ACK viaja en sentido contrario y su node_id ya es el
+ * del nodo que confirma.
+ *
+ *
+ * SALIDA ORDENADA: BYE (D13)
+ *
+ * BYE es la despedida que manda DSM_finalize. Al recibirlo, el coordinador:
+ *
+ *   - saca al nodo del conjunto de copias retenidas de todas las páginas, y
+ *     de los lectores activos si por algún motivo quedara alguno, para no
+ *     mandarle después un INVALIDATE a alguien que ya se fue y quedarse
+ *     esperando un ACK que no va a llegar;
+ *   - cierra su conexión.
+ *
+ * Un BYE es legítimo solo si ese nodo no tiene ninguna página adquirida —
+ * DSM_finalize ya lo exige del lado de la biblioteca— y si ninguna barrera
+ * abierta queda sin poder completarse. Si el nodo se despide mientras otros
+ * esperan en una barrera que necesita su llegada, esa barrera es insatisfacible
+ * y la sesión se aborta: es el mismo caso que perder un participante, y la
+ * política del enunciado ante eso es abortar, no seguir con menos nodos. Los
+ * que esperaban despiertan con DSM_EABORT.
  */
 #define DSM_WIRE_HELLO            0x01u
 #define DSM_WIRE_SESSION_START    0x02u
@@ -93,10 +138,16 @@
 #define DSM_WIRE_ERROR            0x7Eu
 #define DSM_WIRE_BYE              0x7Fu
 
-/* Modo en el campo aux de ACQ_REQ. Coincide a propósito con enum dsm_mode de
- * dsm.h, pero el que viaja es este número, no el valor del enum. */
+/* Modo en el campo aux de ACQ_REQ. El número que viaja es este, no el valor
+ * del enum de dsm.h; los static_assert de abajo garantizan que no se
+ * desincronicen. */
 #define DSM_WIRE_MODE_READ    1u
 #define DSM_WIRE_MODE_WRITE   2u
+
+_Static_assert((unsigned)DSM_READ == DSM_WIRE_MODE_READ,
+               "DSM_READ y DSM_WIRE_MODE_READ deben ser el mismo número");
+_Static_assert((unsigned)DSM_WRITE == DSM_WIRE_MODE_WRITE,
+               "DSM_WRITE y DSM_WIRE_MODE_WRITE deben ser el mismo número");
 
 /* Banderas del byte flags. */
 #define DSM_WIRE_F_HAS_DATA   0x01u
@@ -114,7 +165,7 @@ struct wire_header {
     uint32_t length;      /* bytes de carga después de la cabecera */
     uint32_t node_id;
     uint32_t page_id;     /* DSM_NO_PAGE si el tipo no se refiere a una */
-    uint32_t aux;         /* modo, barrier_id o código de error según el tipo */
+    uint32_t aux;         /* modo, barrier_id, solicitante o código de error */
     uint64_t request_id;
 };
 
