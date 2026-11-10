@@ -37,11 +37,14 @@ PRESENT  := $(patsubst src/%.c,%,$(wildcard $(MAINS)))
 TEST_SRC := $(wildcard tests/test_*.c)
 TEST_BIN := $(patsubst tests/%.c,$(OBJDIR)/%,$(TEST_SRC))
 
-# Límite de tiempo por binario de prueba, en segundos. El enunciado pide que
-# `make test` aplique un límite global; con timeout(1) por binario ninguna
-# prueba puede colgar la suite, y el código 124 de timeout se propaga como
-# fallo. Ajustable: make test TEST_TIMEOUT=60
-TEST_TIMEOUT ?= 300
+# Límites de tiempo de la suite, en segundos. El enunciado pide un límite
+# GLOBAL, así que hay dos: TEST_TIMEOUT acota cada binario, para poder decir
+# cuál se colgó, y TEST_TOTAL_TIMEOUT acota la corrida completa, que es lo que
+# el criterio exige — con N binarios, N veces el límite individual no es un
+# límite global. El código 124 de timeout(1) se propaga como fallo en los dos
+# niveles. Ajustables: make test TEST_TIMEOUT=60 TEST_TOTAL_TIMEOUT=600
+TEST_TIMEOUT       ?= 300
+TEST_TOTAL_TIMEOUT ?= 900
 
 # ---- Sanitizers (#8) ---------------------------------------------------
 #
@@ -86,21 +89,20 @@ $(OBJDIR)/test_%: $(OBJDIR)/test_%.o $(COMMON_O)
 $(OBJDIR):
 	mkdir -p $@
 
+# El ciclo vive en scripts/run_tests.sh para poder envolverlo completo en un
+# solo timeout: así el límite es global y no N veces el individual.
 test: all $(TEST_BIN)
 	@if [ -z "$(TEST_BIN)" ]; then \
 		echo "make test: aún no hay pruebas en tests/."; \
 	else \
-		fail=0; \
-		for t in $(TEST_BIN); do \
-			echo "-- $$t --"; \
-			timeout $(TEST_TIMEOUT) $$t || { \
-				rc=$$?; fail=1; \
-				if [ $$rc -eq 124 ]; then \
-					echo "  TIEMPO AGOTADO tras $(TEST_TIMEOUT)s"; \
-				fi; \
-			}; \
-		done; \
-		exit $$fail; \
+		timeout $(TEST_TOTAL_TIMEOUT) \
+		    scripts/run_tests.sh $(TEST_TIMEOUT) $(TEST_BIN); \
+		rc=$$?; \
+		if [ $$rc -eq 124 ]; then \
+			echo "make test: TIEMPO GLOBAL AGOTADO tras $(TEST_TOTAL_TIMEOUT)s"; \
+			exit 1; \
+		fi; \
+		exit $$rc; \
 	fi
 
 # Limpia antes y después a propósito, en vez de convivir con la compilación
