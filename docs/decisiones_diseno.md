@@ -440,3 +440,66 @@ binario, así que matarlo a él antes de que reenvíe la señal deja el binario 
 lanza con `setsid` para que sea líder de su grupo, de modo que `kill -- -PID` alcance a los dos sin
 depender de ninguna carrera. Verificado con una prueba que duerme 30 s, en tres corridas seguidas,
 comprobando por nombre de proceso que no queda nada vivo.
+
+---
+
+## D16 — El directorio es una máquina de estados que recibe eventos y emite acciones
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#3](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/3)
+- **Quién decide:** Isaac
+
+### Contexto
+
+El directorio es el núcleo de corrección: decide a quién conceder, a quién invalidar y cuándo. El
+issue pide probarlo sin red, y el coordinador (#4) tiene que poder usarlo sin que el directorio
+sepa nada de sockets ni de tramas.
+
+### Decisión
+
+`directory.h` expone un evento por cada mensaje que le importa (`dir_acquire`,
+`dir_invalidate_ack`, `dir_release_write`, `dir_release_read`, `dir_node_leave`) y responde
+emitiendo acciones por un callback (`GRANT`, `INVALIDATE`, `WRITE_PUBLISHED`, `READ_RELEASED`),
+cada una con todo lo que necesita la trama: destinatario, página, `request_id`, solicitante, modo,
+versión y, si corresponde, los datos. El coordinador traduce cada acción a una trama dentro del
+callback; las pruebas la registran.
+
+Detalles que quedan fijados:
+
+- **Las acciones se emiten en el orden en que deben enviarse.** Un release WRITE publica y sube la
+  versión antes de emitir su confirmación, y la confirmación sale antes que las concesiones que
+  habilita. El coordinador no reordena nada.
+- **Las copias retenidas son una máscara, sin versión por nodo.** La versión solo cambia al
+  publicar un WRITE, y antes de concederlo se invalidaron todas las copias ajenas; por lo tanto
+  toda copia retenida es de la versión vigente. Los datos se omiten solo si el nodo figura como
+  copia retenida **y** declara esa versión: el directorio no confía en la declaración sola.
+- **La ronda de invalidación se abre cuando el WRITE llega a la cabeza y no hay lectores activos**,
+  no antes. Es lo que pide el enunciado ("se espera a que terminen los accesos activos
+  anteriores") y deja un único momento en que se calcula a quién invalidar.
+- **Un ACK repetido devuelve `DIR_DUPLICATE`** y no cambia nada. Se reconoce mientras su ronda sea
+  la última de la página. El coordinador lo registra y lo descarta; no aborta.
+- **La despedida cuenta como ACK** de cualquier ronda que esperaba a ese nodo (D13), porque su
+  copia deja de existir.
+- **Un evento rechazado no modifica nada ni emite nada.** El coordinador decide si responde
+  `ERROR` o aborta.
+- **`dir_check_invariants`** verifica SWMR, que lectores y ACK pendientes estén contenidos en las
+  copias retenidas, que cada nodo ocupado aparezca en un solo lugar, y además una condición de
+  progreso: después de cada evento la cola quedó tan adelantada como se podía. El coordinador
+  puede llamarla en modo de depuración.
+
+### Por qué
+
+Con el callback, el directorio no reserva colas de acciones ni conoce tramas, y el puntero a los
+datos de una concesión es válido mientras el coordinador los copia: como el coordinador tiene un
+solo hilo (D1), nada puede cambiar la página entre la decisión y el envío.
+
+### Cómo se validó
+
+13 casos en `tests/test_directory.c`: uno por criterio de aceptación de #3, las validaciones, y
+una prueba de estrés de 20 semillas × 5000 pasos con cuatro trabajadores simulados que confirman
+invalidaciones en orden aleatorio. Después de cada paso se comprueban los invariantes, que la
+versión concedida sea la última publicada y que los bytes que usa el trabajador, recibidos o de
+su caché, sean los de esa versión. Para comprobar que las pruebas detectan errores reales se
+inyectaron 11 bugs, uno a la vez (conceder WRITE sin esperar ACK o lectores, dejar que un READ se
+cuele, contar un ACK duplicado, subir la versión después del ACK, confiar en la versión declarada,
+no tratar la despedida como ACK, entre otros): todos hicieron fallar al menos una prueba.
