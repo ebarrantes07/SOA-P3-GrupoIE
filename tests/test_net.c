@@ -10,6 +10,7 @@
 #include "test_util.h"
 
 #include <fcntl.h>
+#include <pthread.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stdio.h>
@@ -201,6 +202,72 @@ static bool test_peer_name(void) {
     return true;
 }
 
+/* ---- Fragmentación sobre TCP de verdad ------------------------------
+ *
+ * Las pruebas de 1 a 7 bytes de test_frame.c corren sobre socketpair, que es
+ * un par conectado pero de dominio UNIX. Este caso repite lo mismo sobre una
+ * conexión TCP por loopback, que es el transporte que el proyecto va a usar:
+ * cambian el encolado, el tamaño de los buffers y, con TCP_NODELAY, la
+ * política de envío, así que vale ejercitarlo también acá.
+ */
+struct tcp_sender {
+    int  fd;
+    bool ok;
+};
+
+static void *tcp_frame_sender(void *arg) {
+    struct tcp_sender *t = arg;
+    struct wire_header h;
+
+    memset(&h, 0, sizeof h);
+    h.version = DSM_WIRE_VERSION;
+    h.type    = DSM_WIRE_BARRIER_ARRIVE;
+    h.node_id = 3;
+    h.page_id = DSM_NO_PAGE;
+    h.aux     = 1;
+    h.length  = 8u;
+    h.request_id = 4242;
+
+    uint8_t payload[8];
+    wire_put_u64(payload, 99u);
+
+    t->ok = frame_ok(frame_send(t->fd, &h, payload, io_deadline_in(20000)));
+    return NULL;
+}
+
+static bool test_fragmented_over_tcp(void) {
+    int lfd = -1, c = -1, s = -1;
+    uint16_t port = 0;
+    pthread_t th;
+    struct tcp_sender t;
+    struct wire_header out;
+    uint8_t got[DSM_MAX_PAYLOAD];
+
+    CHECK(connected_pair(&lfd, &c, &s, &port));
+
+    /* Un byte por llamada al sistema, en las dos direcciones. */
+    io_set_chunk_limit(1);
+
+    t.fd = s;
+    t.ok = false;
+    CHECK(pthread_create(&th, NULL, tcp_frame_sender, &t) == 0);
+    CHECK(frame_ok(frame_recv(c, &out, got, sizeof got, io_deadline_in(20000))));
+    CHECK(pthread_join(th, NULL) == 0);
+    CHECK(t.ok);
+
+    CHECK(out.type == DSM_WIRE_BARRIER_ARRIVE);
+    CHECK(out.request_id == 4242u);
+    CHECK(out.aux == 1u);
+    CHECK(out.length == 8u);
+    CHECK(wire_get_u64(got) == 99u);
+
+    io_set_chunk_limit(0);
+    net_close(c);
+    net_close(s);
+    net_close(lfd);
+    return true;
+}
+
 static bool test_statuses(void) {
     static const enum net_status all[] = {
         NET_OK, NET_ADDR, NET_TIMEOUT, NET_ERROR,
@@ -222,6 +289,7 @@ int main(void) {
         {"connect_refused", test_connect_refused},
         {"bad_address_is_rejected", test_bad_address_is_rejected},
         {"peer_name", test_peer_name},
+        {"fragmented_over_tcp", test_fragmented_over_tcp},
         {"statuses", test_statuses},
     };
     int failed = test_util_run(tests, sizeof(tests) / sizeof(tests[0]));
