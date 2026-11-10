@@ -190,3 +190,253 @@ Queda anotado como pendiente explícito, con dos razones para no olvidarlo: es u
 del enunciado, y mientras esté público cualquier otro grupo puede leer la solución. Se cambia con
 `gh repo edit ebarrantes07/SOA-P3-GrupoIE --visibility private --accept-visibility-change-consequences`
 o desde Settings → General → Danger Zone. Esta entrada se actualiza cuando se haga.
+
+---
+
+## D7 — La configuración de la región la define el coordinador
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, ambos acuerdan
+
+### Contexto
+
+`HELLO` declaraba `pages_expected`, pero `DSM_init` no recibía la cantidad de páginas, así que la
+biblioteca no tenía de dónde sacar ese valor. Las dos salidas eran agregar un parámetro a la API o
+que el coordinador sea la única autoridad.
+
+### Decisión
+
+El coordinador define la región. El trabajador manda `pages_expected = 0` ("sin opinión") y toma
+el valor de `SESSION_START`. La aplicación lo consulta con `DSM_page_count`.
+
+El campo se conserva en `HELLO`: si llega distinto de cero y no coincide con la sesión, el
+coordinador rechaza el registro.
+
+### Por qué
+
+Con una sola autoridad, el trabajador no tiene cómo discrepar y desaparece toda una familia de
+errores de configuración. El campo se mantiene porque el enunciado pide que el coordinador valide
+la sesión; dejarlo con significado "0 = sin opinión" permite que una prueba afirme una expectativa
+y verifique que un desajuste se rechaza, en vez de volverlo un relleno.
+
+`DSM_page_count` hace falta porque la aplicación de comparación de granularidad usa una página por
+nodo: sin accesor no tendría forma de saber cuántas hay.
+
+---
+
+## D8 — La generación de barrera la cuenta el trabajador y la valida el coordinador
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, ambos acuerdan
+
+### Contexto
+
+`dsm.h` decía que la generación la llevaba el coordinador, pero `BARRIER_ARRIVE` la manda el
+trabajador. Con el campo en la trama sin dueño claro, no quedaba definido qué significa que los
+dos números no coincidan.
+
+### Decisión
+
+Cada trabajador cuenta, por `barrier_id`, cuántas veces ya pasó por él, y manda ese número en su
+llegada. El coordinador valida: rechaza una llegada repetida del mismo nodo en la misma
+generación, y una generación distinta de la que está abierta.
+
+### Por qué
+
+Implementa literalmente la regla del enunciado de admitir una sola llegada por nodo y generación.
+Y convierte en error detectable lo que de otro modo sería una desincronización silenciosa: un nodo
+que se saltea un `barrier_id` o que los invoca en otro orden llega con una generación que no
+corresponde, y eso se ve en el momento en vez de aparecer 80 generaciones después como un
+resultado raro.
+
+---
+
+## D9 — Lo ajustable va en `struct dsm_options`, no en la firma de `DSM_init`
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, ambos acuerdan
+
+### Contexto
+
+El enunciado dice que el timeout de operación "puede ajustarse para instrumentación", y solo
+existía la constante `DSM_DEFAULT_TIMEOUT_MS`. Lo mismo pasaba con la ruta del CSV del trabajador.
+
+### Decisión
+
+`DSM_init` recibe un `const struct dsm_options *` opcional con `timeout_ms` y `log_path`. `NULL`, o
+un campo en cero o `NULL`, toma el valor por omisión. La estructura y la cadena se copian dentro.
+
+### Por qué
+
+Las cuatro aplicaciones obligatorias de #7 van a llamar a `DSM_init`. Agregar parámetros después
+significa tocarlas todas; agregar un campo a la estructura, no. Es el momento más barato para
+decidirlo, y es justo lo que este PR congela.
+
+---
+
+## D10 — Ciclo de vida del contexto: qué libera `DSM_finalize` y cuándo
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, ambos acuerdan
+
+### Contexto
+
+El contrato decía "si liberó el contexto, no se vuelve a usar", lo que no le dice a quien llama si
+puede seguir usando `ctx` después de un error.
+
+### Decisión
+
+- Con una página adquirida: devuelve -1 con `DSM_ESTATE` y **no libera nada**; el contexto sigue
+  válido.
+- En cualquier otro caso **siempre libera**: devuelve 0 si el cierre fue limpio, -1 si la sesión ya
+  estaba en error o falló la despedida, y en ambos casos `ctx` queda inválido.
+
+Es decir: solo `DSM_ESTATE` deja el contexto vivo.
+
+### Por qué
+
+Una regla con una sola excepción se puede recordar y verificar. La consecuencia práctica queda
+escrita en el encabezado: `DSM_last_error` se consulta antes de `DSM_finalize`, nunca después.
+
+---
+
+## D11 — Los códigos de error son contrato de cable, con valores explícitos
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, ambos acuerdan
+
+### Decisión
+
+`enum dsm_status` lleva valores explícitos (`DSM_EINVAL = 1`, `DSM_ESTATE = 2`, …) y no se
+reordena. Un código desconocido recibido por la red se traduce a `DSM_EPROTO`.
+
+### Por qué
+
+Esos números son los que viajan en el campo `aux` de una trama `ERROR`. El riesgo **no** es el
+compilador: los enumeradores de C sin inicializador valen 0, 1, 2… por norma, y lo que se
+serializa es un `u32` que se escribe a mano, así que la representación del `enum` nunca viaja. El
+riesgo es humano: que alguien inserte un código en medio de la lista dentro de unos días y cambie
+el protocolo sin que nada avise. Con los valores escritos, moverlos es un acto deliberado y
+visible en el diff.
+
+---
+
+## D12 — La clave de correlación es (nodo solicitante, `request_id`)
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac observa, se resuelve en la trama
+
+### Contexto
+
+Cada trabajador asigna sus propios `request_id`, así que un `request_id` por sí solo no identifica
+una operación: dos nodos pueden emitir el mismo número. En las tramas que van del coordinador a un
+trabajador, `node_id` es el destinatario, no el solicitante, así que en un `INVALIDATE` el nodo que
+pidió la escritura no aparecía en ninguna parte.
+
+### Decisión
+
+La clave es `(node_id solicitante, request_id)`, y queda escrito en `wire.h`. `INVALIDATE` lleva el
+`node_id` del solicitante en su campo `aux`, que para ese tipo estaba libre.
+
+### Por qué
+
+Isaac proponía documentarlo y que el log del coordinador registrara al solicitante. Resolverlo en
+la trama es más barato y más robusto: no agrega un byte a la cabecera, la trama se explica sola, y
+el log no depende de que la implementación cruce información aparte. Ese log es exactamente lo que
+va a leer el verificador de invariantes de #8, que tiene que demostrar que la concesión de
+escritura ocurrió después de los ACK de *esa* solicitud.
+
+Para emparejar un `INVALIDATE_ACK` sigue alcanzando `(page_id, nodo que responde, request_id)`,
+porque el ACK viaja en sentido contrario.
+
+---
+
+## D13 — `BYE`: salida ordenada, y cuándo es un error
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac observa la falta, se define aquí
+
+### Decisión
+
+Al recibir `BYE`, el coordinador saca al nodo del conjunto de copias retenidas de todas las
+páginas y de los lectores activos, y cierra su conexión. Un `BYE` es legítimo solo si ese nodo no
+tiene ninguna página adquirida y si ninguna barrera abierta queda sin poder completarse. Si el nodo
+se despide mientras otros esperan una barrera que necesita su llegada, la sesión se aborta y los
+que esperaban despiertan con `DSM_EABORT`.
+
+### Por qué
+
+Sin la primera parte, el coordinador podría mandarle un `INVALIDATE` a un nodo que ya se fue y
+quedarse esperando un ACK que nunca llega: un bloqueo permanente por una despedida normal. La
+segunda parte es la política del enunciado ante la pérdida de un participante — abortar, no seguir
+con menos nodos.
+
+Isaac ofreció tomarlo en #3, pero la definición va aquí porque es semántica de `wire.h` y `wire.h`
+es lo que este PR congela. La implementación sí es de #4.
+
+---
+
+## D14 — `dsm.h` es el encabezado público; `wire.h` es interno
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac propone, se invierte la dirección del include
+
+### Contexto
+
+`dsm.h` incluía `wire.h`, así que una aplicación veía todo el protocolo solo para usar
+`DSM_PAGE_SIZE`.
+
+### Decisión
+
+Los límites públicos (`DSM_PAGE_SIZE`, `DSM_MIN/MAX_NODES`, `DSM_MIN/MAX_PAGES`) se definen en
+`dsm.h`. `wire.h` **incluye** `dsm.h` y se queda solo con lo del protocolo: magia, versión, layout
+de la cabecera, códigos de tipo, banderas y centinelas. Una aplicación incluye únicamente `dsm.h`.
+
+### Por qué
+
+Isaac proponía definir el tamaño de página en `dsm.h` y dejar `wire.h` interno, lo que habría
+dejado el mismo número en dos archivos — que es como se desincronizan. Invertir el include lo deja
+en un solo lugar. Además `wire.h` ahora comprueba con `_Static_assert` que `DSM_READ`/`DSM_WRITE`
+valgan lo mismo que `DSM_WIRE_MODE_READ`/`WRITE`: si alguien cambia uno, la compilación falla en
+vez de romper el protocolo en silencio.
+
+---
+
+## D15 — `make test` con límite global, además del límite por binario
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
+- **Quién decide:** Isaac observa, ambos acuerdan
+
+### Contexto
+
+El criterio de aceptación pide un límite **global** de tiempo y el `Makefile` aplicaba uno por
+binario: con N binarios, el peor caso era N veces el límite individual.
+
+### Decisión
+
+El ciclo de pruebas vive en `scripts/run_tests.sh` y el `Makefile` lo invoca entero bajo un
+`timeout` (`TEST_TOTAL_TIMEOUT`, 900 s por omisión). Adentro cada binario conserva su propio límite
+(`TEST_TIMEOUT`, 300 s), para poder atribuir un cuelgue a la prueba que lo causó.
+
+### Por qué, y un detalle que costó dos intentos
+
+Envolver el ciclo en un `timeout` tiene una trampa: al vencer, la señal llega al script y el
+binario de prueba que estaba corriendo **sobrevive como huérfano**. El enunciado exige que no quede
+ningún proceso del programa después de la suite, así que eso sería un incumplimiento introducido
+por el propio arreglo.
+
+El script atiende la señal y mata al grupo de procesos de la prueba en curso. Dos detalles
+importan: el PID que se obtiene de poner `timeout` en segundo plano es el del `timeout`, no el del
+binario, así que matarlo a él antes de que reenvíe la señal deja el binario suelto; y el trabajo se
+lanza con `setsid` para que sea líder de su grupo, de modo que `kill -- -PID` alcance a los dos sin
+depender de ninguna carrera. Verificado con una prueba que duerme 30 s, en tres corridas seguidas,
+comprobando por nombre de proceso que no queda nada vivo.
