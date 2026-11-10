@@ -440,3 +440,178 @@ binario, así que matarlo a él antes de que reenvíe la señal deja el binario 
 lanza con `setsid` para que sea líder de su grupo, de modo que `kill -- -PID` alcance a los dos sin
 depender de ninguna carrera. Verificado con una prueba que duerme 30 s, en tres corridas seguidas,
 comprobando por nombre de proceso que no queda nada vivo.
+
+---
+
+## D16 — El transporte tiene dos niveles, y los plazos son absolutos
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel propone, ambos acuerdan al planear el issue
+
+### Contexto
+
+Los dos lados del sistema necesitan mover bytes, pero con restricciones opuestas. El coordinador es
+un ciclo `poll()` de un solo hilo (D1) y **no puede bloquearse nunca**: si se queda esperando a que
+un trabajador lea, deja de atender a los otros tres. El hilo receptor del trabajador, en cambio,
+quiere justamente bloquearse hasta que llegue la respuesta que espera.
+
+### Decisión
+
+`io.h` expone los dos niveles:
+
+- **Un intento:** `io_read_some` / `io_write_some` mueven lo que se pueda ahora y devuelven
+  `IO_AGAIN` si no se puede nada. El coordinador hace un intento, guarda lo pendiente en su buffer
+  y sigue con los demás.
+- **El ciclo completo:** `io_recv_all` / `io_send_all` insisten hasta mover todos los bytes o hasta
+  que venza el plazo, esperando en `poll` cuando no hay nada que hacer.
+
+Los plazos son **instantes absolutos** del reloj monotónico, no duraciones por llamada.
+
+### Por qué
+
+Una sola implementación sirve a los dos frentes, así que el manejo de transferencias parciales,
+`EINTR` y `EAGAIN` vive en un lugar y no en dos. La alternativa —que E1 entregara solo el nivel
+bloqueante y E3 escribiera sus primitivas— habría dejado dos capas de I/O distintas en el mismo
+proyecto.
+
+Los plazos absolutos resuelven un problema concreto: una trama de 4136 bytes puede necesitar varias
+escrituras parciales, y con un timeout por llamada cada una recibiría los 10 segundos completos. El
+timeout total sería el producto, no el límite. Con un instante límite calculado una vez, las tres
+esperas comparten el mismo presupuesto.
+
+### Lo que esto obliga
+
+Para que el plazo se respete, el descriptor debe ser **no bloqueante** (ver D18): con uno
+bloqueante, `recv` duerme dentro del sistema sin mirar el plazo, y este solo acotaría las esperas
+que llegan a ver `EAGAIN`. Queda documentado como precondición en `io.h`.
+
+---
+
+## D17 — `TCP_NODELAY` activado en todas las conexiones
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** ambos
+
+### Decisión
+
+Todo socket conectado que sale de `net.c` lleva `TCP_NODELAY`.
+
+### Por qué
+
+El algoritmo de Nagle retiene un segmento pequeño esperando juntarlo con el siguiente, para no
+desperdiciar red con paquetes de pocos bytes. El protocolo de este proyecto es casi todo mensajes
+de control chicos: una solicitud son 40 bytes, un ACK de invalidación son 32. Con Nagle activo,
+esos mensajes pueden quedar retenidos decenas de milisegundos, y entonces el experimento de
+localidad de lectura y el de costo de distribución **medirían el buffer de TCP en vez del
+protocolo**.
+
+Queda anotado acá y no solo en el código porque afecta los números del informe: cualquiera que
+intente reproducir las mediciones necesita saber que esta opción está puesta.
+
+### Lo que se pierde
+
+Más paquetes en la red para el mismo tráfico útil. Con 4 nodos por loopback es irrelevante, y en la
+corrida complementaria en dos equipos tampoco domina frente a los 4 KB de una página.
+
+---
+
+## D18 — Todos los sockets son no bloqueantes, y `MSG_NOSIGNAL` en vez de `SIGPIPE`
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel
+
+### Decisión
+
+`net.c` pone `O_NONBLOCK` en todo descriptor que crea, incluido el que escucha y los que vienen de
+`accept`. El modo no bloqueante se activa **antes** de `connect`. Y `io.c` usa `send`/`recv` con
+`MSG_NOSIGNAL`, no `read`/`write`.
+
+### Por qué el no bloqueante
+
+Es la precondición de los plazos de D16. Y en `connect` es más que eso: un `connect` bloqueante se
+queda dentro del sistema el tiempo que el sistema decida —en Linux, del orden de dos minutos de
+reintentos de SYN— así que un trabajador apuntando a un coordinador que no está se colgaría, y el
+timeout de 10 segundos del enunciado no existiría. No bloqueante, `connect` vuelve con `EINPROGRESS`
+y la espera la controla el plazo.
+
+Un detalle que no es evidente: un socket a medio conectar se vuelve escribible **tanto si la
+conexión funcionó como si falló**. `poll` no distingue; hay que preguntar `SO_ERROR`. Saltarse ese
+paso hace que un rechazo parezca un éxito.
+
+### Por qué `MSG_NOSIGNAL`
+
+Escribir a un socket cuyo par ya cerró levanta `SIGPIPE`, cuya acción por omisión es **terminar el
+proceso**. Sin la bandera, la prueba de desconexión que el enunciado exige no fallaría: el
+trabajador desaparecería sin dejar registro ni código de salida útil, y la suite se caería sin
+diagnóstico. Con la bandera, el mismo caso devuelve `EPIPE`, que `io.c` traduce a `IO_CLOSED`.
+
+El costo es que el módulo trabaja sobre sockets y no sobre tuberías ni archivos, porque
+`MSG_NOSIGNAL` es de `send`/`recv`. El proyecto solo usa TCP, así que no se pierde nada.
+
+---
+
+## D19 — El límite de fragmentación se configura por variable de entorno
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado exige una prueba de robustez que limite cada envío y cada recepción a entre 1 y 7
+bytes, y pida los mismos resultados funcionales.
+
+### Decisión
+
+`io.c` acota cada operación a `DSM_IO_CHUNK_MAX`, leída del entorno una sola vez. Un valor fuera de
+[1, 65536] se ignora; 0 significa sin límite. `io_set_chunk_limit` existe para las pruebas
+unitarias.
+
+### Por qué del entorno y no de un parámetro
+
+La prueba de punta a punta de #8 tiene que correr **los binarios reales**, con sus procesos
+separados, sin recompilar nada ni pasar banderas por toda la cadena de llamadas. Una variable de
+entorno se hereda sola.
+
+Se lee con `pthread_once` porque el hilo de aplicación y el hilo receptor pueden llegar a la vez, y
+una inicialización perezosa con una bandera común sería una carrera que ThreadSanitizer reportaría
+con razón. El valor se guarda en un `_Atomic` porque las pruebas lo cambian.
+
+Un valor inválido se ignora en silencio en vez de escribir a `stderr`: esto es una biblioteca y no
+le corresponde contaminar la salida del programa. Quien quiera verificar qué quedó configurado
+llama a `io_chunk_limit`, y el registro del trabajador lo anota.
+
+---
+
+## D20 — Tres capas, y el coordinador no usa la de más arriba
+
+- **Fecha:** 2026-11-09
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel
+
+### Decisión
+
+El transporte queda en tres módulos con una sola dirección de dependencia:
+
+| Módulo | Traduce | Depende de |
+|---|---|---|
+| `wire` | bytes ↔ campos | nada (ni sockets) |
+| `io` | bytes ↔ socket | nada del protocolo |
+| `frame` | tramas ↔ socket | `wire` y `io` |
+
+El hilo receptor del trabajador usa `frame`. El coordinador **no**: arma las tramas con su propio
+buffer de entrada y `wire_decode_header`, porque su ciclo `poll()` no puede bloquearse (D1).
+
+### Por qué
+
+`wire` sin red se prueba completo sin abrir un socket, igual que el directorio de #3 se prueba sin
+red: las dos piezas donde vive la corrección se verifican con secuencias de datos, no con
+escenarios. Y `io` sin protocolo se puede ejercitar con patrones de bytes cualquiera, lo que hace
+que la prueba de fragmentación sea independiente de qué mensajes existan.
+
+Que el coordinador no use `frame` no es una omisión: es la consecuencia de D1. Vale dejarlo escrito
+para que nadie "arregle" después la duplicación aparente metiendo `frame_recv` en el ciclo `poll()`,
+que es exactamente el error que bloquearía al coordinador esperando a un nodo lento.
