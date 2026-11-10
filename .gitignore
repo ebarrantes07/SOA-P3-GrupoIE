@@ -25,6 +25,10 @@ logs/
 results/*
 !results/.gitkeep
 !results/seleccionados/
+# La excepción va después de *.csv a propósito: en git gana el último patrón
+# que coincide, así que sin esta línea la regla global *.csv se lleva por
+# delante los resultados que el informe necesita reproducir.
+!results/seleccionados/**
 
 # Entornos locales
 .vscode/
