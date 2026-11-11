@@ -11,7 +11,6 @@
  */
 #include "directory.h"
 #include "test_util.h"
-#include "wire.h"   /* DSM_NO_VERSION: lo que declara un trabajador sin copia */
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -133,9 +132,8 @@ static bool test_rejects_out_of_range_and_bad_mode(void) {
     CHECK(dir_acquire(d, 0, 0, (enum dsm_mode)0, 1, NOV) == DIR_EINVAL);
     CHECK(dir_acquire(d, 0, 0, (enum dsm_mode)3, 1, NOV) == DIR_EINVAL);
     CHECK(dir_acquire(NULL, 0, 0, DSM_READ, 1, NOV) == DIR_EINVAL);
-    uint8_t page[DSM_PAGE_SIZE];
-    fill(page, 1);
     CHECK(dir_release_write(d, 0, 0, NULL, 1) == DIR_EINVAL);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 1) == DIR_EINVAL);        /* solicitante */
     CHECK(dir_node_leave(d, 7) == DIR_EINVAL);
     CHECK(r.n == 0);   /* ningún rechazo emite nada */
     INV(d);
@@ -159,24 +157,170 @@ static bool test_rejects_out_of_state(void) {
     CHECK(dir_acquire(d, 0, 1, DSM_WRITE, 3, NOV) == DIR_ESTATE);
 
     /* Release de otro modo o de otra página. */
-    CHECK(dir_release_write(d, 0, 0, page, 4) == DIR_ESTATE);
-    CHECK(dir_release_read(d, 0, 1, 4) == DIR_ESTATE);
+    CHECK(dir_release_write(d, 0, 0, page, 1) == DIR_ESTATE);
+    CHECK(dir_release_read(d, 0, 1, 1) == DIR_ESTATE);
 
     /* Despedida con un acceso vivo. */
     CHECK(dir_node_leave(d, 0) == DIR_ESTATE);
 
     /* ACK que nadie pidió. */
-    CHECK(dir_invalidate_ack(d, 1, 0, 1) == DIR_ESTATE);
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 1) == DIR_ESTATE);
 
     rec_clear(&r);
     INV(d);
-    CHECK(dir_release_read(d, 0, 0, 5) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_READ_RELEASED, 0) == 1);
 
     /* Un nodo que se despidió ya no puede hacer nada. */
     CHECK(dir_node_leave(d, 0) == DIR_OK);
     CHECK(dir_node_leave(d, 0) == DIR_ESTATE);
     CHECK(dir_acquire(d, 0, 0, DSM_READ, 6, NOV) == DIR_ESTATE);
+    INV(d);
+    dir_destroy(d);
+    return true;
+}
+
+/* ---- Correlación por request_id (D21) --------------------------------- */
+
+static bool test_request_id_must_increase(void) {
+    struct recorder r = {0};
+    dir *d = dir_create(2, 1, record, &r);
+
+    CHECK(dir_acquire(d, 0, 0, DSM_READ, 5, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 5) == DIR_OK);
+    rec_clear(&r);
+
+    /* Repetido o menor: rechazado sin emitir nada. */
+    CHECK(dir_acquire(d, 0, 0, DSM_READ, 5, NOV) == DIR_ESTATE);
+    CHECK(dir_acquire(d, 0, 0, DSM_READ, 3, NOV) == DIR_ESTATE);
+    CHECK(r.n == 0);
+    INV(d);
+
+    /* Con saltos sí: los números gastados en barreras no cuentan. */
+    CHECK(dir_acquire(d, 0, 0, DSM_READ, 9, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 9) == DIR_OK);
+
+    /* Cada nodo lleva su propia secuencia: el 5 de otro nodo es válido. */
+    CHECK(dir_acquire(d, 1, 0, DSM_READ, 5, NOV) == DIR_OK);
+    INV(d);
+    dir_destroy(d);
+    return true;
+}
+
+static bool test_release_needs_its_request_id(void) {
+    struct recorder r = {0};
+    dir *d = dir_create(1, 1, record, &r);
+    uint8_t page[DSM_PAGE_SIZE];
+    fill(page, 4);
+
+    CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 4, NOV) == DIR_OK);
+    rec_clear(&r);
+
+    /* El escritor correcto con otro request_id: no publica ni confirma. */
+    CHECK(dir_release_write(d, 0, 0, page, 3) == DIR_ESTATE);
+    CHECK(dir_release_write(d, 0, 0, page, 5) == DIR_ESTATE);
+    CHECK(r.n == 0);
+    struct dir_page_info info;
+    dir_page_info(d, 0, &info);
+    CHECK(info.version == 0 && info.writer == 0);
+    CHECK(all_bytes(dir_page_data(d, 0), 0));
+
+    /* Con el suyo, sí; y la confirmación repite ese número. */
+    CHECK(dir_release_write(d, 0, 0, page, 4) == DIR_OK);
+    const struct rec_action *ack = rec_find(&r, DIR_ACT_WRITE_PUBLISHED, 0);
+    CHECK(ack && ack->a.request_id == 4 && ack->a.version == 1);
+
+    /* Lo mismo en READ. */
+    CHECK(dir_acquire(d, 0, 0, DSM_READ, 7, 1) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 8) == DIR_ESTATE);
+    rec_clear(&r);
+    CHECK(dir_release_read(d, 0, 0, 7) == DIR_OK);
+    ack = rec_find(&r, DIR_ACT_READ_RELEASED, 0);
+    CHECK(ack && ack->a.request_id == 7);
+    INV(d);
+    dir_destroy(d);
+    return true;
+}
+
+/* La secuencia del hallazgo 1 de la revisión del PR #12: el mismo nodo pide
+ * dos WRITE seguidos sobre la misma página. Antes, si repetía el request_id,
+ * el ACK rezagado de la primera ronda completaba la segunda. */
+static bool test_stale_ack_same_requester(void) {
+    struct recorder r = {0};
+    dir *d = dir_create(3, 1, record, &r);
+    uint8_t page[DSM_PAGE_SIZE];
+    fill(page, 1);
+
+    CHECK(dir_acquire(d, 1, 0, DSM_READ, 100, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 100) == DIR_OK);          /* n1 retiene */
+    CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 5, NOV) == DIR_OK);  /* ronda (0, 5) */
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 5) == DIR_OK);
+    CHECK(dir_release_write(d, 0, 0, page, 5) == DIR_OK);
+    CHECK(dir_acquire(d, 1, 0, DSM_READ, 101, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 101) == DIR_OK);          /* n0 y n1 retienen */
+    rec_clear(&r);
+
+    /* Reutilizar el 5 ya no es posible. */
+    CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 5, NOV) == DIR_ESTATE);
+    CHECK(r.n == 0);
+
+    /* Con el siguiente número, la ronda nueva es (0, 6). */
+    CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 6, 1) == DIR_OK);
+    const struct rec_action *inv = rec_find(&r, DIR_ACT_INVALIDATE, 1);
+    CHECK(inv && inv->a.request_id == 6 && inv->a.requester == 0);
+    rec_clear(&r);
+
+    /* El ACK rezagado de la ronda (0, 5) no cuenta y no concede nada. */
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 5) == DIR_ESTATE);
+    CHECK(r.n == 0);
+    struct dir_page_info info;
+    dir_page_info(d, 0, &info);
+    CHECK(info.pending_acks == 1 && info.writer == -1);
+    INV(d);
+
+    /* El verdadero, sí. */
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 6) == DIR_OK);
+    CHECK(rec_count(&r, DIR_ACT_GRANT, 0) == 1);
+    INV(d);
+    dir_destroy(d);
+    return true;
+}
+
+/* El caso que la regla de request_id creciente sola no cubre: dos
+ * solicitantes distintos usan el mismo número, porque cada nodo lleva su
+ * propia secuencia. Por eso el ACK repite también al solicitante. */
+static bool test_stale_ack_other_requester_same_id(void) {
+    struct recorder r = {0};
+    dir *d = dir_create(3, 1, record, &r);
+    uint8_t page[DSM_PAGE_SIZE];
+    fill(page, 2);
+
+    CHECK(dir_acquire(d, 1, 0, DSM_READ, 1, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 1) == DIR_OK);
+    CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 5, NOV) == DIR_OK);  /* ronda (0, 5) */
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 5) == DIR_OK);
+    CHECK(dir_release_write(d, 0, 0, page, 5) == DIR_OK);
+    CHECK(dir_acquire(d, 1, 0, DSM_READ, 2, NOV) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 2) == DIR_OK);
+    rec_clear(&r);
+
+    /* El nodo 2 estrena su secuencia y también usa el 5: ronda (2, 5). */
+    CHECK(dir_acquire(d, 2, 0, DSM_WRITE, 5, NOV) == DIR_OK);
+    CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 2);
+    rec_clear(&r);
+
+    /* Un ACK rezagado de n1 para la ronda (0, 5) tiene el mismo request_id,
+     * pero otro solicitante: se rechaza. */
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 5) == DIR_ESTATE);
+    CHECK(r.n == 0);
+    struct dir_page_info info;
+    dir_page_info(d, 0, &info);
+    CHECK(info.pending_acks == 2);
+    INV(d);
+
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 5) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 5) == DIR_OK);
+    CHECK(rec_count(&r, DIR_ACT_GRANT, 2) == 1);
     INV(d);
     dir_destroy(d);
     return true;
@@ -213,7 +357,7 @@ static bool test_version_match_skips_data_not_permission(void) {
     dir *d = dir_create(2, 1, record, &r);
 
     CHECK(dir_acquire(d, 0, 0, DSM_READ, 1, NOV) == DIR_OK);
-    CHECK(dir_release_read(d, 0, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
     rec_clear(&r);
 
     /* Mismo nodo, copia retenida, misma versión: permiso concedido SIN datos.
@@ -224,14 +368,14 @@ static bool test_version_match_skips_data_not_permission(void) {
     struct dir_page_info info;
     dir_page_info(d, 0, &info);
     CHECK(info.readers == 0x1);
-    CHECK(dir_release_read(d, 0, 0, 4) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 3) == DIR_OK);
     rec_clear(&r);
 
     /* El trabajador descartó su copia: declara DSM_NO_VERSION y recibe datos. */
     CHECK(dir_acquire(d, 0, 0, DSM_READ, 5, NOV) == DIR_OK);
     g = rec_find(&r, DIR_ACT_GRANT, 0);
     CHECK(g && g->had_data);
-    CHECK(dir_release_read(d, 0, 0, 6) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 5) == DIR_OK);
     rec_clear(&r);
 
     /* Un nodo SIN copia retenida que declara la versión correcta recibe
@@ -263,14 +407,14 @@ static bool test_write_waits_for_readers_and_acks(void) {
     INV(d);
 
     /* Termina un lector: todavía queda otro acceso activo. */
-    CHECK(dir_release_read(d, 0, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 0);
     CHECK(rec_count(&r, DIR_ACT_GRANT, UINT32_MAX) == 0);
     rec_clear(&r);
 
     /* Termina el otro: se invalidan las dos copias retenidas, no la del
      * solicitante, y cada INVALIDATE lleva la solicitud y al solicitante. */
-    CHECK(dir_release_read(d, 1, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 2);
     const struct rec_action *i0 = rec_find(&r, DIR_ACT_INVALIDATE, 0);
     CHECK(i0 && i0->a.request_id == 7 && i0->a.requester == 2);
@@ -283,12 +427,12 @@ static bool test_write_waits_for_readers_and_acks(void) {
     rec_clear(&r);
 
     /* Primer ACK: falta otro, no hay concesión. */
-    CHECK(dir_invalidate_ack(d, 0, 0, 7) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 7) == DIR_OK);
     CHECK(r.n == 0);
     INV(d);
 
     /* El escritor recibe la concesión solo después del último ACK. */
-    CHECK(dir_invalidate_ack(d, 1, 0, 7) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 7) == DIR_OK);
     const struct rec_action *g = rec_find(&r, DIR_ACT_GRANT, 2);
     CHECK(g && g->a.mode == DSM_WRITE && g->had_data && g->a.request_id == 7);
     dir_page_info(d, 0, &info);
@@ -299,10 +443,10 @@ static bool test_write_waits_for_readers_and_acks(void) {
     /* Publica: la confirmación sale con la versión nueva ya instalada. */
     uint8_t page[DSM_PAGE_SIZE];
     fill(page, 0xAB);
-    CHECK(dir_release_write(d, 2, 0, page, 8) == DIR_OK);
+    CHECK(dir_release_write(d, 2, 0, page, 7) == DIR_OK);
     CHECK(r.published_seen && r.version_at_ack == 1 && r.byte_at_ack == 0xAB);
     const struct rec_action *ack = rec_find(&r, DIR_ACT_WRITE_PUBLISHED, 2);
-    CHECK(ack && ack->a.version == 1 && ack->a.request_id == 8);
+    CHECK(ack && ack->a.version == 1 && ack->a.request_id == 7);
     rec_clear(&r);
 
     /* Nueva lectura de un antiguo lector: datos nuevos, versión 1, aunque
@@ -322,8 +466,8 @@ static bool test_duplicate_ack_not_counted(void) {
     /* Copias retenidas en 0 y 1. */
     CHECK(dir_acquire(d, 0, 0, DSM_READ, 1, NOV) == DIR_OK);
     CHECK(dir_acquire(d, 1, 0, DSM_READ, 1, NOV) == DIR_OK);
-    CHECK(dir_release_read(d, 0, 0, 2) == DIR_OK);
-    CHECK(dir_release_read(d, 1, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 1) == DIR_OK);
     rec_clear(&r);
 
     CHECK(dir_acquire(d, 2, 0, DSM_WRITE, 5, NOV) == DIR_OK);
@@ -331,24 +475,25 @@ static bool test_duplicate_ack_not_counted(void) {
     rec_clear(&r);
 
     /* El ACK repetido de 0 no cuenta como el de 1: no hay concesión. */
-    CHECK(dir_invalidate_ack(d, 0, 0, 5) == DIR_OK);
-    CHECK(dir_invalidate_ack(d, 0, 0, 5) == DIR_DUPLICATE);
-    CHECK(dir_invalidate_ack(d, 0, 0, 5) == DIR_DUPLICATE);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 5) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 5) == DIR_DUPLICATE);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 5) == DIR_DUPLICATE);
     CHECK(r.n == 0);
     struct dir_page_info info;
     dir_page_info(d, 0, &info);
     CHECK(info.pending_acks == 1 && info.writer == -1);
     INV(d);
 
-    /* Un ACK con otro request_id tampoco cuenta. */
-    CHECK(dir_invalidate_ack(d, 1, 0, 6) == DIR_ESTATE);
+    /* Un ACK con otro request_id u otro solicitante tampoco cuenta. */
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 6) == DIR_ESTATE);
+    CHECK(dir_invalidate_ack(d, 1, 0, 0, 5) == DIR_ESTATE);
     CHECK(r.n == 0);
 
-    CHECK(dir_invalidate_ack(d, 1, 0, 5) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 5) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_GRANT, 2) == 1);
 
     /* Después de cerrada la ronda, el repetido sigue reconociéndose. */
-    CHECK(dir_invalidate_ack(d, 1, 0, 5) == DIR_DUPLICATE);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 5) == DIR_DUPLICATE);
     INV(d);
     dir_destroy(d);
     return true;
@@ -372,10 +517,10 @@ static bool test_reader_does_not_jump_queued_writer(void) {
     INV(d);
 
     /* Sale el lector: se invalida su copia; tras el ACK, WRITE para 1. */
-    CHECK(dir_release_read(d, 0, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, 0) == 1);
     CHECK(rec_count(&r, DIR_ACT_GRANT, UINT32_MAX) == 0);
-    CHECK(dir_invalidate_ack(d, 0, 0, 1) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 0, 0, 1, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_GRANT, 1) == 1);
     CHECK(rec_count(&r, DIR_ACT_GRANT, 2) == 0);
     rec_clear(&r);
@@ -384,7 +529,7 @@ static bool test_reader_does_not_jump_queued_writer(void) {
      * versión nueva. */
     uint8_t page[DSM_PAGE_SIZE];
     fill(page, 0x11);
-    CHECK(dir_release_write(d, 1, 0, page, 2) == DIR_OK);
+    CHECK(dir_release_write(d, 1, 0, page, 1) == DIR_OK);
     CHECK(r.n == 2);
     CHECK(r.act[0].a.type == DIR_ACT_WRITE_PUBLISHED && r.act[0].a.node == 1);
     CHECK(r.act[1].a.type == DIR_ACT_GRANT && r.act[1].a.node == 2);
@@ -412,7 +557,7 @@ static bool test_old_version_never_served_during_write(void) {
 
     uint8_t page[DSM_PAGE_SIZE];
     fill(page, 0x5A);
-    CHECK(dir_release_write(d, 0, 0, page, 2) == DIR_OK);
+    CHECK(dir_release_write(d, 0, 0, page, 1) == DIR_OK);
 
     /* El lector recibe la versión 1, no la 0. El WRITE de 2 queda detrás. */
     const struct rec_action *g = rec_find(&r, DIR_ACT_GRANT, 1);
@@ -423,10 +568,10 @@ static bool test_old_version_never_served_during_write(void) {
 
     /* Al salir el lector, se invalidan las copias de 0 (el escritor anterior)
      * y de 1; con los ACK, 2 escribe sobre la versión 1. */
-    CHECK(dir_release_read(d, 1, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 1) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 2);
-    CHECK(dir_invalidate_ack(d, 0, 0, 1) == DIR_OK);
-    CHECK(dir_invalidate_ack(d, 1, 0, 1) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 1) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 1) == DIR_OK);
     g = rec_find(&r, DIR_ACT_GRANT, 2);
     CHECK(g && g->a.version == 1 && g->had_data && all_bytes(g->data, 0x5A));
     INV(d);
@@ -441,7 +586,7 @@ static bool test_writer_keeps_its_copy(void) {
     fill(page, 3);
 
     CHECK(dir_acquire(d, 0, 0, DSM_WRITE, 1, NOV) == DIR_OK);
-    CHECK(dir_release_write(d, 0, 0, page, 2) == DIR_OK);
+    CHECK(dir_release_write(d, 0, 0, page, 1) == DIR_OK);
     rec_clear(&r);
 
     /* Escribe otra vez con su copia vigente: sin invalidaciones ni datos. Es
@@ -475,16 +620,16 @@ static bool test_leave_counts_as_ack(void) {
 
     /* 0 retiene copias de las dos páginas; 1 retiene la de la página 0. */
     CHECK(dir_acquire(d, 0, 0, DSM_READ, 1, NOV) == DIR_OK);
-    CHECK(dir_release_read(d, 0, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 0, 1) == DIR_OK);
     CHECK(dir_acquire(d, 0, 1, DSM_READ, 3, NOV) == DIR_OK);
-    CHECK(dir_release_read(d, 0, 1, 4) == DIR_OK);
+    CHECK(dir_release_read(d, 0, 1, 3) == DIR_OK);
     CHECK(dir_acquire(d, 1, 0, DSM_READ, 1, NOV) == DIR_OK);
-    CHECK(dir_release_read(d, 1, 0, 2) == DIR_OK);
+    CHECK(dir_release_read(d, 1, 0, 1) == DIR_OK);
     rec_clear(&r);
 
     CHECK(dir_acquire(d, 2, 0, DSM_WRITE, 9, NOV) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 2);
-    CHECK(dir_invalidate_ack(d, 1, 0, 9) == DIR_OK);
+    CHECK(dir_invalidate_ack(d, 1, 0, 2, 9) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_GRANT, 2) == 0);
     rec_clear(&r);
 
@@ -495,14 +640,14 @@ static bool test_leave_counts_as_ack(void) {
     INV(d);
 
     /* Y su ACK tardío ya no se acepta, ni como bueno ni como nuevo. */
-    CHECK(dir_invalidate_ack(d, 0, 0, 9) == DIR_ESTATE);
+    CHECK(dir_invalidate_ack(d, 0, 0, 2, 9) == DIR_ESTATE);
 
     /* Su copia de la página 1 también desapareció: un WRITE allí no le manda
      * INVALIDATE a nadie. */
     rec_clear(&r);
     uint8_t page[DSM_PAGE_SIZE];
     fill(page, 1);
-    CHECK(dir_release_write(d, 2, 0, page, 10) == DIR_OK);
+    CHECK(dir_release_write(d, 2, 0, page, 9) == DIR_OK);
     rec_clear(&r);
     CHECK(dir_acquire(d, 1, 1, DSM_WRITE, 11, NOV) == DIR_OK);
     CHECK(rec_count(&r, DIR_ACT_INVALIDATE, UINT32_MAX) == 0);
@@ -538,9 +683,11 @@ struct sim_node {
     /* Caché local: versión y contenido por página, o DSM_NO_VERSION. */
     uint64_t      cached[S_PAGES];
     uint8_t       cache_byte[S_PAGES];
-    /* INVALIDATE recibidos y aún no confirmados (página -> request_id). */
+    /* INVALIDATE recibidos y aún no confirmados, con la clave que el ACK
+     * tiene que repetir: solicitud y solicitante. */
     bool          inval_due[S_PAGES];
     uint64_t      inval_req[S_PAGES];
+    uint32_t      inval_from[S_PAGES];
 };
 
 struct sim {
@@ -593,16 +740,19 @@ static void sim_emit(void *user, const struct dir_action *a) {
          * manda más tarde, en un paso aleatorio, para mezclar los órdenes. */
         n->cached[a->page_id]    = DSM_NO_VERSION;
         n->inval_due[a->page_id] = true;
-        n->inval_req[a->page_id] = a->request_id;
+        n->inval_req[a->page_id]  = a->request_id;
+        n->inval_from[a->page_id] = a->requester;
         break;
     case DIR_ACT_WRITE_PUBLISHED:
         s->writes++;
-        if (a->version != s->version[a->page_id])
+        if (a->version != s->version[a->page_id] || a->request_id != n->req)
             s->failed = true;
         n->cached[a->page_id] = a->version;
         n->state = S_IDLE;
         break;
     case DIR_ACT_READ_RELEASED:
+        if (a->request_id != n->req)
+            s->failed = true;   /* confirmación de otra operación */
         n->state = S_IDLE;
         break;
     }
@@ -619,7 +769,8 @@ static bool sim_step(struct sim *s) {
         for (uint32_t p = 0; p < S_PAGES; p++) {
             if (n->inval_due[p]) {
                 n->inval_due[p] = false;
-                return dir_invalidate_ack(s->d, id, p, n->inval_req[p]) == DIR_OK;
+                return dir_invalidate_ack(s->d, id, p, n->inval_from[p],
+                                          n->inval_req[p]) == DIR_OK;
             }
         }
     }
@@ -627,12 +778,16 @@ static bool sim_step(struct sim *s) {
     if (n->state == S_IDLE) {
         n->page = rnd(S_PAGES);
         n->mode = rnd(2) ? DSM_READ : DSM_WRITE;
-        n->req  = ++n->next_req;
+        /* Crece con saltos, como cuando la biblioteca gasta números en
+         * barreras entre un acceso y otro. Los nodos arrancan en el mismo
+         * número, así que se repiten request_id entre nodos a propósito. */
+        n->next_req += 1u + rnd(3);
+        n->req   = n->next_req;
         n->state = S_WAITING;
         return dir_acquire(s->d, id, n->page, n->mode, n->req, n->cached[n->page]) == DIR_OK;
     }
     if (n->state == S_HOLDING) {
-        uint64_t rel = ++n->next_req;
+        uint64_t rel = n->req;   /* el release lleva el id del acquire */
         if (n->mode == DSM_READ)
             return dir_release_read(s->d, id, n->page, rel) == DIR_OK;
         uint8_t page[DSM_PAGE_SIZE];
@@ -659,13 +814,14 @@ static bool sim_drain(struct sim *s) {
             for (uint32_t p = 0; p < S_PAGES; p++) {
                 if (n->inval_due[p]) {
                     n->inval_due[p] = false;
-                    if (dir_invalidate_ack(s->d, id, p, n->inval_req[p]) != DIR_OK)
+                    if (dir_invalidate_ack(s->d, id, p, n->inval_from[p],
+                                           n->inval_req[p]) != DIR_OK)
                         return false;
                     busy = true;
                 }
             }
             if (n->state == S_HOLDING) {
-                uint64_t rel = ++n->next_req;
+                uint64_t rel = n->req;
                 if (n->mode == DSM_READ) {
                     if (dir_release_read(s->d, id, n->page, rel) != DIR_OK)
                         return false;
@@ -740,6 +896,10 @@ int main(void) {
         {"create_rejects_bad_args", test_create_rejects_bad_args},
         {"rejects_out_of_range_and_bad_mode", test_rejects_out_of_range_and_bad_mode},
         {"rejects_out_of_state", test_rejects_out_of_state},
+        {"request_id_must_increase", test_request_id_must_increase},
+        {"release_needs_its_request_id", test_release_needs_its_request_id},
+        {"stale_ack_same_requester", test_stale_ack_same_requester},
+        {"stale_ack_other_requester_same_id", test_stale_ack_other_requester_same_id},
         {"concurrent_readers", test_concurrent_readers},
         {"version_match_skips_data_not_permission", test_version_match_skips_data_not_permission},
         {"write_waits_for_readers_and_acks", test_write_waits_for_readers_and_acks},
