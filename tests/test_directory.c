@@ -180,7 +180,7 @@ static bool test_rejects_out_of_state(void) {
     return true;
 }
 
-/* ---- Correlación por request_id (D21) --------------------------------- */
+/* ---- Correlación por request_id (D2.1) --------------------------------- */
 
 static bool test_request_id_must_increase(void) {
     struct recorder r = {0};
@@ -612,7 +612,7 @@ static bool test_pages_are_independent(void) {
     return true;
 }
 
-/* ---- Despedida (D13) --------------------------------------------------- */
+/* ---- Despedida (D0.13) --------------------------------------------------- */
 
 static bool test_leave_counts_as_ack(void) {
     struct recorder r = {0};

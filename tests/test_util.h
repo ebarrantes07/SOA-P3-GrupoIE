@@ -1,6 +1,6 @@
 /* test_util.h — convención mínima compartida por tests/test_*.c.
  *
- * Reutilizado de SOA-P2-GrupoIE (ver docs/decisiones_diseno.md, D5).
+ * Reutilizado de SOA-P2-GrupoIE (ver docs/decisiones_diseno.md, D0.5).
  *
  * Cada archivo de prueba define funciones test_*() que devuelven bool
  * (true = pasó) y usan CHECK() para cada aserto, en vez de assert(): CHECK no

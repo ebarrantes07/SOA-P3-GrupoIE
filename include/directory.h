@@ -7,7 +7,7 @@
  * quién conceder, a quién invalidar y a quién confirmar. El coordinador
  * traduce cada acción a una trama; las pruebas la registran y la comparan.
  * Así los invariantes se prueban alimentando secuencias de eventos, sin
- * sockets de por medio (ver docs/decisiones_diseno.md, D21).
+ * sockets de por medio (ver docs/decisiones_diseno.md, D2.1).
  *
  * Es un encabezado interno del coordinador, así que incluye wire.h: los
  * valores que recibe (DSM_NO_VERSION, request_id, el solicitante en aux) son
@@ -53,10 +53,10 @@
  * El puntero `data` de una concesión apunta a los datos confirmados del
  * directorio y solo es válido durante la llamada a `emit`: el coordinador
  * copia esos bytes a su buffer de salida ahí mismo. Como el coordinador tiene
- * un solo hilo (D1), ningún otro evento puede cambiar la página mientras tanto.
+ * un solo hilo (D0.1), ningún otro evento puede cambiar la página mientras tanto.
  *
  *
- * CORRELACIÓN (D12, D21)
+ * CORRELACIÓN (D0.12, D2.1)
  *
  * Un acceso completo lleva un solo request_id: el de su ACQ_REQ, que se
  * repite en la concesión, en el release y en su confirmación. Los request_id
@@ -113,9 +113,9 @@ struct dir_action {
     uint32_t page_id;
     uint64_t request_id;     /* GRANT y confirmaciones: el del acceso, que es
                               * el de su ACQ_REQ. INVALIDATE: el de la
-                              * solicitud WRITE que la causó (D12) */
+                              * solicitud WRITE que la causó (D0.12) */
     uint32_t requester;      /* INVALIDATE: nodo que pidió el WRITE, va en aux
-                              * (D12). En las demás es igual a `node` */
+                              * (D0.12). En las demás es igual a `node` */
     enum dsm_mode mode;      /* GRANT: modo concedido */
     uint64_t version;        /* GRANT: versión concedida.
                               * WRITE_PUBLISHED: versión recién publicada */
@@ -186,7 +186,7 @@ enum dir_status dir_release_write(dir *d, uint32_t node, uint32_t page_id,
 enum dir_status dir_release_read(dir *d, uint32_t node, uint32_t page_id,
                                  uint64_t request_id);
 
-/* BYE de `node` (D13). El nodo no puede tener un acceso ni una solicitud en
+/* BYE de `node` (D0.13). El nodo no puede tener un acceso ni una solicitud en
  * curso (DIR_ESTATE si los tiene). Se lo saca de las copias retenidas de
  * todas las páginas; si alguna ronda de invalidación esperaba su ACK, la
  * despedida cuenta como ese ACK, porque su copia deja de existir, y el WRITE
