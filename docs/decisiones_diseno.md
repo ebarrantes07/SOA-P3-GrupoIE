@@ -892,3 +892,86 @@ confiar en la versión declarada, no tratar la despedida como ACK, permitir `req
 repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
 ACK sin el solicitante: con solo la regla de `request_id` creciente,
 `stale_ack_other_requester_same_id` falla.
+
+---
+
+## D3.1 — El registro es un CSV de 20 columnas, y es un formateador sin reloj ni estado propio
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide un registro con cuatro grupos de campos —identificación, estado de la página,
+tráfico y tiempo— y una secuencia global creciente. D0.5 ya había decidido no reutilizar el
+`logger.c` del Proyecto 2, porque sus columnas son las del buffer acotado y recibe tipos de ese
+dominio; el esquema se define donde se usa, y el del coordinador es este issue.
+
+### Decisión
+
+Un CSV con estas 20 columnas, en este orden:
+
+```
+run_id, component, seq, node_id, request_id, page_id, event, status,   <- identificación
+mode, version, writer, readers, readers_mask, inval_pending,           <- estado
+msgs_in, msgs_out, bytes_in, bytes_out, page_xfers, invals,            <- tráfico
+dur_ns                                                                 <- tiempo
+```
+
+Cuatro propiedades fijan el diseño:
+
+**No lleva reloj.** La duración la calcula quien registra y llega en la fila ya hecha. El módulo
+no llama a `now_monotonic_ns` nunca. Es lo que vuelve sus pruebas deterministas: la misma
+secuencia de llamadas produce el mismo archivo byte por byte, así que se comparan archivos
+completos en vez de verificar rangos.
+
+**No duplica el estado.** Las cinco columnas de estado salen de un `struct dir_page_info`, la
+instantánea que el directorio ya produce (D2.1). No hay copia que mantener al día. Una copia
+podría desincronizarse del directorio, y entonces el registro mentiría justo cuando más importa,
+que es al auditar un invariante roto.
+
+**Lo ausente es celda vacía, no centinela.** Un `BARRIER_RELEASE` no tiene página y un
+`SESSION_START` no tiene nodo: esas celdas quedan vacías. No pueden quedar en 0 porque el nodo 0 y
+la página 0 son reales, y no se escribe `0xFFFFFFFF` porque los scripts de E8 leerían la columna
+como número y un promedio quedaría contaminado con 4294967295. Una celda vacía es un valor
+faltante en cualquier herramienta de análisis.
+
+**El tráfico lo cuenta el módulo, no quien registra.** `log_count_sent` y `log_count_recv` reciben
+el tipo de trama y la longitud de carga, y derivan solos los bytes totales, si llevaba página y si
+era una invalidación. Quien llama no recibe ningún contador, así que **no puede contar dos veces**:
+el criterio de #4 que pide que el tamaño de página se cuente una sola vez por transmisión queda
+satisfecho por la forma de la interfaz, no por disciplina al usarla. Se invocan desde el único
+lugar donde una trama cruza de verdad el socket.
+
+### Dos detalles que podrían parecer descuidos
+
+**`status` es columna propia, no va en `event`.** La primera versión escribía el estado de error en
+la columna de evento. Con dos columnas, una fila de error conserva **qué** se intentaba y **por
+qué** falló; con una sola se perdía lo primero.
+
+**El token del estado no es `DSM_strerror`.** Por dos razones. La práctica: `DSM_strerror` lo
+implementa `libdsm` (#5) y el coordinador no se enlaza contra la biblioteca del trabajador — al
+intentar usarlo, el enlazado falló. Y la de fondo: sirven a lectores distintos. `DSM_strerror` da
+una frase en español para que una aplicación la muestre; esta columna necesita un token corto,
+estable y sin comas que se pueda agrupar. Que las dos tablas no coincidan no es una
+inconsistencia: no describen lo mismo.
+
+### Cómo se validó
+
+13 casos en `tests/test_log.c`. Al no haber reloj, nueve comparan el archivo completo contra el
+texto esperado e informan la primera línea que difiere. Los otros cubren los rechazos de apertura
+(nombre con coma, salto de línea o comilla; nombre demasiado largo; ruta imposible), que un
+registro nulo acepte todas las llamadas sin hacer nada, que el nodo 0 salga como `0` y no como
+ausente, que la secuencia sea una sola para todos los nodos y páginas, y que los contadores de una
+fila sean los del momento de escribirla.
+
+Se inyectaron cuatro errores, uno a la vez, y cada uno hace fallar su prueba: contar como
+transferencia una concesión sin datos, contar el ACK de invalidación como otra invalidación, no
+incrementar la secuencia y olvidar la cabecera en el conteo de bytes.
+
+Un quinto —quitar el chequeo de tipo en la derivación de página— **no hacía fallar nada**, porque
+con tramas válidas es inalcanzable: solo `ACQ_GRANT` y `REL_WRITE` admiten carga de 4096 o más, y
+la mayor de las demás es `ERROR` con 256. Se agregó un caso que le pasa a propósito un tipo chico
+con longitud de página, porque estas funciones no validan tramas y el chequeo de tipo es lo único
+que las separa de contar una transferencia inventada. Con ese caso, el quinto mutante también cae.
