@@ -5,11 +5,11 @@
  * recv con MSG_NOSIGNAL para que escribir a un par que ya cerró devuelva un
  * error en vez de matar el proceso con SIGPIPE. Las pruebas usan socketpair.
  *
- * Dos niveles a propósito (ver docs/decisiones_diseno.md, D16):
+ * Dos niveles a propósito (ver docs/decisiones_diseno.md, D1.1):
  *
  *   - UN INTENTO: io_read_some / io_write_some. Mueven lo que se pueda ahora y
  *     devuelven IO_AGAIN si no se puede nada. Es lo que necesita el ciclo
- *     poll() del coordinador (D1), que no puede bloquearse nunca: hace un
+ *     poll() del coordinador (D0.1), que no puede bloquearse nunca: hace un
  *     intento, guarda lo que quedó pendiente en su buffer y sigue atendiendo
  *     a los demás.
  *   - EL CICLO COMPLETO: io_recv_all / io_send_all. Insisten hasta mover todos

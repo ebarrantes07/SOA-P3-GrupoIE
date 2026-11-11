@@ -3,7 +3,7 @@
  * Este es el único encabezado que incluye una aplicación. Define la API y los
  * límites que una aplicación necesita conocer; el formato de trama vive en
  * wire.h, que es interno y que incluye este archivo para no duplicar los
- * límites (ver docs/decisiones_diseno.md, D14).
+ * límites (ver docs/decisiones_diseno.md, D0.14).
  *
  * El acceso es explícito: la aplicación declara cuándo empieza y cuándo
  * termina de usar una página, y solo durante ese intervalo el puntero sirve.
@@ -95,7 +95,7 @@
  * Viven aquí, no en wire.h, porque son parte del contrato público: una
  * aplicación que reparte contadores entre páginas necesita el tamaño de
  * página, y una que valida sus argumentos necesita los rangos. wire.h los
- * toma de aquí (D14).
+ * toma de aquí (D0.14).
  *
  * El tamaño de página es la granularidad lógica del protocolo. El enunciado
  * fija 4096 bytes y advierte que no debe suponerse igual a la página del
@@ -128,7 +128,7 @@ enum dsm_mode {
 /* Códigos de error.
  *
  * Los valores son EXPLÍCITOS y no se reordenan, porque son contrato de cable:
- * son los números que lleva el campo aux de una trama ERROR (D11). El riesgo
+ * son los números que lleva el campo aux de una trama ERROR (D0.11). El riesgo
  * no es el compilador —los enumeradores de C sin inicializador valen 0, 1, 2…
  * por norma, y lo que se serializa es un u32 que se escribe a mano— sino que
  * alguien reordene este bloque y cambie el protocolo en silencio. Un código
@@ -152,7 +152,7 @@ enum dsm_status {
  *
  * Existe para que lo instrumentable no viaje en la firma de DSM_init: el
  * enunciado pide que el timeout se pueda ajustar, y agregar parámetros después
- * obligaría a tocar las cuatro aplicaciones obligatorias (D9). Un campo en
+ * obligaría a tocar las cuatro aplicaciones obligatorias (D0.9). Un campo en
  * cero o NULL toma el valor por omisión, así que basta con inicializar la
  * estructura a cero y llenar lo que interese.
  *
@@ -173,7 +173,7 @@ struct dsm_options {
  * err no es NULL.
  *
  * La cantidad de páginas no es un parámetro: la región la define el
- * coordinador y el trabajador la recibe al arrancar la sesión (D7). Se
+ * coordinador y el trabajador la recibe al arrancar la sesión (D0.7). Se
  * consulta con DSM_page_count.
  *
  * Bloquea hasta que la sesión esté completa o venza el timeout. */
@@ -210,7 +210,7 @@ void *DSM_acquire(dsm_ctx *ctx, uint32_t page_id, enum dsm_mode mode);
  * observará. Si falla, el estado de la publicación es indeterminado y la
  * sesión queda en error.
  *
- * En DSM_READ registra el fin de la lectura y espera el ACK (D3). La copia
+ * En DSM_READ registra el fin de la lectura y espera el ACK (D0.3). La copia
  * puede quedar en la caché como copia revocable, que no autoriza a leerla de
  * nuevo sin volver a adquirir.
  *
@@ -225,7 +225,7 @@ int DSM_release(dsm_ctx *ctx, uint32_t page_id);
  * coordinador la valida — rechaza una llegada repetida del mismo nodo en la
  * misma generación, y una generación que no sea la que está abierta — de modo
  * que un nodo que se saltea una barrera o las invoca en otro orden se detecta
- * en vez de desincronizar la sesión en silencio (D8). Eso implementa la regla
+ * en vez de desincronizar la sesión en silencio (D0.8). Eso implementa la regla
  * del enunciado de admitir una sola llegada por nodo y generación.
  *
  * No transfiere páginas y no hace visible nada por sí misma: la visibilidad
@@ -239,7 +239,7 @@ int DSM_barrier(dsm_ctx *ctx, uint32_t barrier_id);
 
 /* Cierra la participación y libera sockets, memoria e hilos internos.
  *
- * Ciclo de vida del contexto, sin ambigüedad (D10):
+ * Ciclo de vida del contexto, sin ambigüedad (D0.10):
  *
  *   - Con una página adquirida: devuelve -1 con DSM_ESTATE y NO libera nada.
  *     El contexto sigue siendo válido y hay que liberar la página antes de

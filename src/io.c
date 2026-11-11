@@ -1,5 +1,5 @@
 /* Transporte a prueba de transferencias parciales. Ver include/io.h para el
- * contrato y docs/decisiones_diseno.md (D16) para por qué hay dos niveles.
+ * contrato y docs/decisiones_diseno.md (D1.1) para por qué hay dos niveles.
  */
 #include "io.h"
 

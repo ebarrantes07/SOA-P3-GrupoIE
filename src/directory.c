@@ -32,7 +32,7 @@ struct node {
     enum node_state state;
     uint32_t        page;    /* válido si state != NODE_IDLE */
     uint64_t        request; /* request_id del acceso en curso o del último;
-                              * los request_id de un nodo solo crecen (D21) */
+                              * los request_id de un nodo solo crecen (D2.1) */
     bool            has_request;
 };
 
@@ -277,7 +277,7 @@ enum dir_status dir_acquire(dir *d, uint32_t node, uint32_t page_id,
     /* Los request_id de un nodo crecen estrictamente. Junto con el
      * solicitante que repite el ACK, eso vuelve única la clave de cada ronda
      * de invalidación en toda la sesión, y un ACK rezagado de una ronda
-     * anterior no puede confundirse con el de la actual (D21). */
+     * anterior no puede confundirse con el de la actual (D2.1). */
     if (d->node[node].has_request && request_id <= d->node[node].request)
         return DIR_ESTATE;
 
@@ -402,7 +402,7 @@ enum dir_status dir_node_leave(dir *d, uint32_t node) {
         if (was_pending) {
             /* Su copia deja de existir: eso es exactamente lo que el ACK
              * confirmaría. Sin esto, el WRITE de esa ronda no avanzaría
-             * nunca (D13). */
+             * nunca (D0.13). */
             confirm_invalidation(p, node);
             if (p->inval_pending == 0)
                 pump(d, i);

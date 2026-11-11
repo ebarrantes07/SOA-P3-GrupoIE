@@ -302,14 +302,14 @@ static bool test_node_and_aux_rules(void) {
     req.aux = DSM_WIRE_MODE_READ;
     CHECK(wire_check(&req) == WIRE_OK);
 
-    /* En una invalidación, aux es el nodo solicitante (D12). */
+    /* En una invalidación, aux es el nodo solicitante (D0.12). */
     inval.aux = DSM_MAX_NODES;
     CHECK(wire_check(&inval) == WIRE_BAD_FIELD);
     inval.aux = 0;
     CHECK(wire_check(&inval) == WIRE_OK);
 
     /* Y su confirmación repite ese mismo campo, porque la ronda se identifica
-     * por (solicitante, request_id) y no solo por el número (D21). Si acá no
+     * por (solicitante, request_id) y no solo por el número (D2.1). Si acá no
      * se acotara, el coordinador recibiría un solicitante fuera de rango y
      * tendría que defenderse él: la trama ya no sería válida pero pasaría. */
     struct wire_header ack = valid_for(DSM_WIRE_INVALIDATE_ACK);
@@ -321,7 +321,7 @@ static bool test_node_and_aux_rules(void) {
     return true;
 }
 
-/* `reserved` vale cero en esta versión (D2). Se prueba por el camino real,
+/* `reserved` vale cero en esta versión (D0.2). Se prueba por el camino real,
  * el de decodificar: el byte 7 llega del cable, y es ahí donde un valor
  * distinto de cero tiene que detener la trama. */
 static bool test_reserved_must_be_zero(void) {

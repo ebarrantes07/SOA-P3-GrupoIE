@@ -1,13 +1,20 @@
 # Decisiones de diseño
 
-Bitácora viva de decisiones de diseño del Proyecto 3 (MC6004 SOA). Cada entrada queda numerada
-(D1, D2…) y no se borra aunque una decisión posterior la reemplace — en ese caso la entrada nueva
-dice explícitamente a cuál reemplaza y por qué. El objetivo es que cualquiera (incluido el
-profesor) pueda reconstruir por qué el código quedó como quedó sin tener que preguntar.
+Bitácora viva de decisiones de diseño del Proyecto 3 (MC6004 SOA). Ninguna entrada se borra aunque
+una decisión posterior la reemplace: en ese caso la entrada nueva dice explícitamente a cuál
+reemplaza y por qué. El objetivo es que cualquiera (incluido el profesor) pueda reconstruir por qué
+el código quedó como quedó sin tener que preguntar.
+
+Las entradas se numeran **`Di.j`**, donde `i` es la épica que originó la decisión (E0 a E9, las
+mismas de los issues) y `j` es un consecutivo dentro de esa épica: `D1.3` es la tercera decisión
+que salió de E1. Es un índice, no un orden cronológico. La razón es práctica: con dos personas
+trabajando en ramas paralelas, una numeración corrida hace que las dos tomen el mismo número
+siguiente y haya que renumerar al fusionar. Con `Di.j` cada épica tiene su propio espacio y la
+colisión no puede ocurrir.
 
 ---
 
-## D1 — El coordinador es un proceso de un solo hilo con `poll()`
+## D0.1 — El coordinador es un proceso de un solo hilo con `poll()`
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -51,7 +58,7 @@ lado de recepción.
 
 ---
 
-## D2 — Formato de trama: cabecera fija de 32 bytes, campo por campo, en orden de red
+## D0.2 — Formato de trama: cabecera fija de 32 bytes, campo por campo, en orden de red
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -97,10 +104,10 @@ Las versiones de página son de 64 bits y viajan en la carga, no en `aux`.
   que hoy valga cero: un receptor que lo ignorara seguiría adelante interpretando mal una trama que
   no entiende, mientras que rechazarla hace que el cambio se note el día que ocurra. Un byte
   reservado que nadie verifica no está reservado, está sin usar.
-- De paso, el byte deja la cabecera en 32 y todos los campos multibyte en múltiplos de 4 (`length` en
-  8, `request_id` en 16, `aux` en 28), lo que hace legible un volcado hexadecimal de 16 bytes por
+- De paso, el byte deja la cabecera en 32 y todos los campos multibyte en múltiplos de 4 (`length`
+  en 8, `request_id` en 16, `aux` en 28), lo que hace legible un volcado hexadecimal de 16 bytes por
   línea. Sin él serían 31 bytes y offsets impares. No es por alineación de acceso: los enteros se
-  arman byte por byte con corrimientos (D16), así que ningún campo se lee como entero desde el buffer.
+  arman byte por byte con corrimientos (D1.1), así que ningún campo se lee como entero desde el buffer.
 
 ### Alternativa descartada
 
@@ -118,7 +125,7 @@ exigir serializar campo por campo.
 
 ---
 
-## D3 — El `release` de READ también se confirma con ACK
+## D0.3 — El `release` de READ también se confirma con ACK
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -154,7 +161,7 @@ datos.
 
 ---
 
-## D4 — Identificadores en inglés, comentarios en español
+## D0.4 — Identificadores en inglés, comentarios en español
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -167,7 +174,7 @@ enunciado y de las páginas de manual es inglés, y traducirlo a medias produce 
 
 ---
 
-## D5 — Qué se reutiliza del Proyecto 2 y qué no
+## D0.5 — Qué se reutiliza del Proyecto 2 y qué no
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -193,7 +200,7 @@ en E4.
 
 ---
 
-## D6 — El repositorio está público, y eso hay que corregirlo antes de la entrega
+## D0.6 — El repositorio está público, y eso hay que corregirlo antes de la entrega
 
 - **Fecha:** 2026-11-08
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1)
@@ -210,7 +217,7 @@ o desde Settings → General → Danger Zone. Esta entrada se actualiza cuando s
 
 ---
 
-## D7 — La configuración de la región la define el coordinador
+## D0.7 — La configuración de la región la define el coordinador
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -242,7 +249,7 @@ nodo: sin accesor no tendría forma de saber cuántas hay.
 
 ---
 
-## D8 — La generación de barrera la cuenta el trabajador y la valida el coordinador
+## D0.8 — La generación de barrera la cuenta el trabajador y la valida el coordinador
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -270,7 +277,7 @@ resultado raro.
 
 ---
 
-## D9 — Lo ajustable va en `struct dsm_options`, no en la firma de `DSM_init`
+## D0.9 — Lo ajustable va en `struct dsm_options`, no en la firma de `DSM_init`
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -294,7 +301,7 @@ decidirlo, y es justo lo que este PR congela.
 
 ---
 
-## D10 — Ciclo de vida del contexto: qué libera `DSM_finalize` y cuándo
+## D0.10 — Ciclo de vida del contexto: qué libera `DSM_finalize` y cuándo
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -321,7 +328,7 @@ escrita en el encabezado: `DSM_last_error` se consulta antes de `DSM_finalize`, 
 
 ---
 
-## D11 — Los códigos de error son contrato de cable, con valores explícitos
+## D0.11 — Los códigos de error son contrato de cable, con valores explícitos
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -343,7 +350,7 @@ visible en el diff.
 
 ---
 
-## D12 — La clave de correlación es (nodo solicitante, `request_id`)
+## D0.12 — La clave de correlación es (nodo solicitante, `request_id`)
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -374,7 +381,7 @@ porque el ACK viaja en sentido contrario.
 
 ---
 
-## D13 — `BYE`: salida ordenada, y cuándo es un error
+## D0.13 — `BYE`: salida ordenada, y cuándo es un error
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -400,7 +407,7 @@ es lo que este PR congela. La implementación sí es de #4.
 
 ---
 
-## D14 — `dsm.h` es el encabezado público; `wire.h` es interno
+## D0.14 — `dsm.h` es el encabezado público; `wire.h` es interno
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -427,7 +434,7 @@ vez de romper el protocolo en silencio.
 
 ---
 
-## D15 — `make test` con límite global, además del límite por binario
+## D0.15 — `make test` con límite global, además del límite por binario
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#1](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/1) · revisión del PR #11
@@ -460,7 +467,7 @@ comprobando por nombre de proceso que no queda nada vivo.
 
 ---
 
-## D16 — El transporte tiene dos niveles, y los plazos son absolutos
+## D1.1 — El transporte tiene dos niveles, y los plazos son absolutos
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -469,8 +476,8 @@ comprobando por nombre de proceso que no queda nada vivo.
 ### Contexto
 
 Los dos lados del sistema necesitan mover bytes, pero con restricciones opuestas. El coordinador es
-un ciclo `poll()` de un solo hilo (D1) y **no puede bloquearse nunca**: si se queda esperando a que
-un trabajador lea, deja de atender a los otros tres. El hilo receptor del trabajador, en cambio,
+un ciclo `poll()` de un solo hilo (D0.1) y **no puede bloquearse nunca**: si se queda esperando a
+que un trabajador lea, deja de atender a los otros tres. El hilo receptor del trabajador, en cambio,
 quiere justamente bloquearse hasta que llegue la respuesta que espera.
 
 ### Decisión
@@ -499,13 +506,13 @@ esperas comparten el mismo presupuesto.
 
 ### Lo que esto obliga
 
-Para que el plazo se respete, el descriptor debe ser **no bloqueante** (ver D18): con uno
+Para que el plazo se respete, el descriptor debe ser **no bloqueante** (ver D1.3): con uno
 bloqueante, `recv` duerme dentro del sistema sin mirar el plazo, y este solo acotaría las esperas
 que llegan a ver `EAGAIN`. Queda documentado como precondición en `io.h`.
 
 ---
 
-## D17 — `TCP_NODELAY` activado en todas las conexiones
+## D1.2 — `TCP_NODELAY` activado en todas las conexiones
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -534,7 +541,7 @@ corrida complementaria en dos equipos tampoco domina frente a los 4 KB de una p�
 
 ---
 
-## D18 — Todos los sockets son no bloqueantes, y `MSG_NOSIGNAL` en vez de `SIGPIPE`
+## D1.3 — Todos los sockets son no bloqueantes, y `MSG_NOSIGNAL` en vez de `SIGPIPE`
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -548,7 +555,7 @@ corrida complementaria en dos equipos tampoco domina frente a los 4 KB de una p�
 
 ### Por qué el no bloqueante
 
-Es la precondición de los plazos de D16. Y en `connect` es más que eso: un `connect` bloqueante se
+Es la precondición de los plazos de D1.1. Y en `connect` es más que eso: un `connect` bloqueante se
 queda dentro del sistema el tiempo que el sistema decida —en Linux, del orden de dos minutos de
 reintentos de SYN— así que un trabajador apuntando a un coordinador que no está se colgaría, y el
 timeout de 10 segundos del enunciado no existiría. No bloqueante, `connect` vuelve con `EINPROGRESS`
@@ -570,7 +577,7 @@ El costo es que el módulo trabaja sobre sockets y no sobre tuberías ni archivo
 
 ---
 
-## D19 — El límite de fragmentación se configura por variable de entorno
+## D1.4 — El límite de fragmentación se configura por variable de entorno
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -603,7 +610,7 @@ llama a `io_chunk_limit`, y el registro del trabajador lo anota.
 
 ---
 
-## D20 — Tres capas, y el coordinador no usa la de más arriba
+## D1.5 — Tres capas, y el coordinador no usa la de más arriba
 
 - **Fecha:** 2026-11-09
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -620,7 +627,7 @@ El transporte queda en tres módulos con una sola dirección de dependencia:
 | `frame` | tramas ↔ socket | `wire` y `io` |
 
 El hilo receptor del trabajador usa `frame`. El coordinador **no**: arma las tramas con su propio
-buffer de entrada y `wire_decode_header`, porque su ciclo `poll()` no puede bloquearse (D1).
+buffer de entrada y `wire_decode_header`, porque su ciclo `poll()` no puede bloquearse (D0.1).
 
 ### Por qué
 
@@ -629,120 +636,13 @@ red: las dos piezas donde vive la corrección se verifican con secuencias de dat
 escenarios. Y `io` sin protocolo se puede ejercitar con patrones de bytes cualquiera, lo que hace
 que la prueba de fragmentación sea independiente de qué mensajes existan.
 
-Que el coordinador no use `frame` no es una omisión: es la consecuencia de D1. Vale dejarlo escrito
+Que el coordinador no use `frame` no es una omisión: es la consecuencia de D0.1. Vale dejarlo escrito
 para que nadie "arregle" después la duplicación aparente metiendo `frame_recv` en el ciclo `poll()`,
 que es exactamente el error que bloquearía al coordinador esperando a un nodo lento.
 
 ---
 
-## D21 — El directorio es una máquina de estados que recibe eventos y emite acciones
-
-- **Fecha:** 2026-11-09, corregida el 2026-11-10 con la revisión del PR #12
-- **Issue:** [#3](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/3)
-- **Quién decide:** Isaac; la corrección de la correlación sale de un hallazgo de Emmanuel
-
-Esta entrada se escribió como D16 y se renumeró a D21 porque la rama de E1 (#13) usa D16 a D20.
-Se acordó desempatar por issue de origen y, cuando las dos ramas estén en `main`, renumerar toda
-la bitácora a `Di.j` (issue de origen, consecutivo) en un commit aparte.
-
-### Contexto
-
-El directorio es el núcleo de corrección: decide a quién conceder, a quién invalidar y cuándo. El
-issue pide probarlo sin red, y el coordinador (#4) tiene que poder usarlo sin que el directorio
-sepa nada de sockets ni de tramas.
-
-### Decisión
-
-`directory.h` expone un evento por cada mensaje que le importa (`dir_acquire`,
-`dir_invalidate_ack`, `dir_release_write`, `dir_release_read`, `dir_node_leave`) y responde
-emitiendo acciones por un callback (`GRANT`, `INVALIDATE`, `WRITE_PUBLISHED`, `READ_RELEASED`),
-cada una con todo lo que necesita la trama: destinatario, página, `request_id`, solicitante, modo,
-versión y, si corresponde, los datos. El coordinador traduce cada acción a una trama dentro del
-callback; las pruebas la registran.
-
-Detalles que quedan fijados:
-
-- **Las acciones se emiten en el orden en que deben enviarse.** Un release WRITE publica y sube la
-  versión antes de emitir su confirmación, y la confirmación sale antes que las concesiones que
-  habilita. El coordinador no reordena nada.
-- **Las copias retenidas son una máscara, sin versión por nodo.** La versión solo cambia al
-  publicar un WRITE, y antes de concederlo se invalidaron todas las copias ajenas; por lo tanto
-  toda copia retenida es de la versión vigente. Los datos se omiten solo si el nodo figura como
-  copia retenida **y** declara esa versión: el directorio no confía en la declaración sola.
-- **La ronda de invalidación se abre cuando el WRITE llega a la cabeza y no hay lectores activos**,
-  no antes. Es lo que pide el enunciado ("se espera a que terminen los accesos activos
-  anteriores") y deja un único momento en que se calcula a quién invalidar.
-- **Un acceso completo lleva un solo `request_id`**, el de su `ACQ_REQ`, que se repite en la
-  concesión, en el release y en su confirmación. Los `request_id` de un nodo **crecen
-  estrictamente** (pueden saltar, nunca repetirse) y el directorio rechaza un `ACQ_REQ` que no
-  crezca y un release con otro número.
-- **Una ronda de invalidación se identifica por (solicitante, `request_id`)**, y el
-  `INVALIDATE_ACK` repite las dos partes: el `request_id` y, en `aux`, el solicitante que traía el
-  `INVALIDATE`. Con la regla anterior esa clave es única en toda la sesión.
-- **Un ACK repetido devuelve `DIR_DUPLICATE`** y no cambia nada. Se reconoce mientras su ronda sea
-  la última de la página; uno de una ronda anterior se rechaza con `DIR_ESTATE`. El coordinador
-  registra el repetido y lo descarta; no aborta.
-- **La despedida cuenta como ACK** de cualquier ronda que esperaba a ese nodo (D13), porque su
-  copia deja de existir.
-- **Un evento rechazado no modifica nada ni emite nada.** El coordinador decide si responde
-  `ERROR` o aborta.
-- **`dir_check_invariants`** verifica SWMR, que lectores y ACK pendientes estén contenidos en las
-  copias retenidas, que cada nodo ocupado aparezca en un solo lugar, y además una condición de
-  progreso: después de cada evento la cola quedó tan adelantada como se podía. El coordinador
-  puede llamarla en modo de depuración.
-
-### Por qué
-
-Con el callback, el directorio no reserva colas de acciones ni conoce tramas, y el puntero a los
-datos de una concesión es válido mientras el coordinador los copia: como el coordinador tiene un
-solo hilo (D1), nada puede cambiar la página entre la decisión y el envío.
-
-### La correlación, y por qué el primer diseño no alcanzaba
-
-La primera versión emparejaba un `INVALIDATE_ACK` solo por `request_id`. Emmanuel mostró en la
-revisión una secuencia en la que un nodo repite un `request_id` en dos WRITE sobre la misma
-página: el ACK rezagado de la primera ronda se cuenta en la segunda y el WRITE se concede antes de
-que la invalidación real se confirme. Lo grave es que `dir_check_invariants` no lo ve, porque
-desde dentro la ronda se completó de forma legítima, y ninguna semilla de la prueba de estrés lo
-encuentra, porque los trabajadores simulados nunca repiten números.
-
-Su propuesta era exigir `request_id` crecientes por nodo. Eso cierra su secuencia, pero no
-alcanza solo: los `request_id` son únicos **por nodo**, y dos solicitantes distintos pueden usar
-el mismo número. Un ACK rezagado de la ronda del nodo 0 con `request_id` 5 encajaría en una ronda
-posterior del nodo 2 con `request_id` 5. Por eso el ACK repite también al solicitante. Las dos
-reglas juntas vuelven única la clave, y el enunciado pide justamente que el coordinador valide la
-"correspondencia de ACK antes de modificar su estado".
-
-De la misma familia: un release tiene que llevar el `request_id` de su acquire. Si no, un
-`REL_WRITE` con un número equivocado pasaba sin detectarse y el trabajador no podría emparejar la
-confirmación con su operación pendiente.
-
-Costo: el trabajador repite en el ACK un campo que ya recibió, sin bytes extra en la cabecera, y
-`libdsm` (#5) lleva un contador de `request_id` por contexto. Del lado del transporte, `wire_check`
-puede validar el `aux` del `INVALIDATE_ACK` con la misma regla que el del `INVALIDATE`.
-
-### Cómo se validó
-
-17 casos en `tests/test_directory.c`: uno por criterio de aceptación de #3, las validaciones,
-cuatro de correlación (`request_id` creciente, release con su `request_id`, el ACK rezagado del
-mismo solicitante que encontró Emmanuel y el de otro solicitante con el mismo número), y una
-prueba de estrés de 20 semillas × 5000 pasos con cuatro trabajadores simulados que confirman
-invalidaciones en orden aleatorio. Los simulados usan `request_id` con saltos y que se repiten
-entre nodos. Después de cada paso se comprueban los invariantes, que la versión concedida sea la
-última publicada, que los bytes que usa el trabajador (recibidos o de su caché) sean los de esa
-versión y que cada confirmación repita el `request_id` del acceso.
-
-Para comprobar que las pruebas detectan errores reales se inyectaron 15 bugs, uno a la vez, y
-todos hicieron fallar al menos una prueba. Entre ellos: conceder WRITE sin esperar ACK o
-lectores, dejar que un READ se cuele, contar un ACK duplicado, subir la versión después del ACK,
-confiar en la versión declarada, no tratar la despedida como ACK, permitir `request_id`
-repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
-ACK sin el solicitante: con solo la regla de `request_id` creciente, `stale_ack_other_requester_same_id`
-falla.
-
----
-
-## D22 — Cada trama sale en una sola escritura, y un solo emisor por descriptor
+## D1.6 — Cada trama sale en una sola escritura, y un solo emisor por descriptor
 
 - **Fecha:** 2026-11-11
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -751,9 +651,9 @@ falla.
 ### Contexto
 
 `frame_send` enviaba la cabecera y la carga con dos llamadas a `io_send_all`. Con `TCP_NODELAY`
-activado (D17), eso produce dos segmentos por cada trama con carga: los 32 bytes de cabecera viajan
-solos y la página de 4096 va aparte. D17 existe para que los experimentos midan el protocolo y no el
-algoritmo de Nagle, y partir cada mensaje en dos trabaja contra ese mismo objetivo.
+activado (D1.2), eso produce dos segmentos por cada trama con carga: los 32 bytes de cabecera viajan
+solos y la página de 4096 va aparte. D1.2 existe para que los experimentos midan el protocolo y no
+el algoritmo de Nagle, y partir cada mensaje en dos trabaja contra ese mismo objetivo.
 
 Hay un segundo problema en la misma función. Dos `io_send_all` seguidos no son atómicos, y en el
 trabajador hay dos hilos que envían por el mismo socket: el de aplicación (`ACQ_REQ`, los releases,
@@ -765,8 +665,8 @@ remedio, porque el receptor usa `length` como única autoridad de dónde termina
 `frame_send` arma la trama completa en un buffer local de `DSM_MAX_FRAME` (4136 bytes) y la entrega
 en **una sola** llamada a `io_send_all`.
 
-Y el contrato de `frame_send` declara la precondición: **un solo emisor por descriptor a la vez**; si
-varios hilos envían por el mismo socket, quien llama serializa. La función no lleva candado. La
+Y el contrato de `frame_send` declara la precondición: **un solo emisor por descriptor a la vez**;
+si varios hilos envían por el mismo socket, quien llama serializa. La función no lleva candado. La
 serialización vive en `libdsm` (#5), con un mutex de envío por contexto.
 
 ### Por qué
@@ -793,7 +693,7 @@ dispararse, porque `wire_check` ya acota la longitud al máximo de cada tipo; se
 ### Una sola llamada a `io_send_all` no es una sola llamada al sistema
 
 Es importante no confundir las dos cosas, porque de eso depende que la precondición siga siendo
-necesaria. Con el límite de fragmentación en 1000 (D19), la misma trama sale así:
+necesaria. Con el límite de fragmentación en 1000 (D1.4), la misma trama sale así:
 
 ```
 send #1: 1000 bytes    send #4: 1000 bytes
@@ -814,7 +714,7 @@ descrito arriba, antes y después.
 
 ---
 
-## D23 — El plazo de `net_connect` es para la llamada completa y se reparte entre las direcciones
+## D1.7 — El plazo de `net_connect` es para la llamada completa y se reparte entre las direcciones
 
 - **Fecha:** 2026-11-11
 - **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
@@ -889,3 +789,106 @@ dirección se quede con todo: con `left == 1` la división general ya da exactam
 de `== 0` para que el caso de la última dirección quede visible al leer, y está anotado en los tres
 lugares porque un mutante que cambie `<= 1` por `== 0` no hace fallar ninguna prueba, y eso podría
 leerse como que la rama no sirve.
+
+---
+
+## D2.1 — El directorio es una máquina de estados que recibe eventos y emite acciones
+
+- **Fecha:** 2026-11-09, corregida el 2026-11-10 con la revisión del PR #12
+- **Issue:** [#3](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/3)
+- **Quién decide:** Isaac; la corrección de la correlación sale de un hallazgo de Emmanuel
+
+### Contexto
+
+El directorio es el núcleo de corrección: decide a quién conceder, a quién invalidar y cuándo. El
+issue pide probarlo sin red, y el coordinador (#4) tiene que poder usarlo sin que el directorio
+sepa nada de sockets ni de tramas.
+
+### Decisión
+
+`directory.h` expone un evento por cada mensaje que le importa (`dir_acquire`,
+`dir_invalidate_ack`, `dir_release_write`, `dir_release_read`, `dir_node_leave`) y responde
+emitiendo acciones por un callback (`GRANT`, `INVALIDATE`, `WRITE_PUBLISHED`, `READ_RELEASED`),
+cada una con todo lo que necesita la trama: destinatario, página, `request_id`, solicitante, modo,
+versión y, si corresponde, los datos. El coordinador traduce cada acción a una trama dentro del
+callback; las pruebas la registran.
+
+Detalles que quedan fijados:
+
+- **Las acciones se emiten en el orden en que deben enviarse.** Un release WRITE publica y sube la
+  versión antes de emitir su confirmación, y la confirmación sale antes que las concesiones que
+  habilita. El coordinador no reordena nada.
+- **Las copias retenidas son una máscara, sin versión por nodo.** La versión solo cambia al
+  publicar un WRITE, y antes de concederlo se invalidaron todas las copias ajenas; por lo tanto
+  toda copia retenida es de la versión vigente. Los datos se omiten solo si el nodo figura como
+  copia retenida **y** declara esa versión: el directorio no confía en la declaración sola.
+- **La ronda de invalidación se abre cuando el WRITE llega a la cabeza y no hay lectores activos**,
+  no antes. Es lo que pide el enunciado ("se espera a que terminen los accesos activos
+  anteriores") y deja un único momento en que se calcula a quién invalidar.
+- **Un acceso completo lleva un solo `request_id`**, el de su `ACQ_REQ`, que se repite en la
+  concesión, en el release y en su confirmación. Los `request_id` de un nodo **crecen
+  estrictamente** (pueden saltar, nunca repetirse) y el directorio rechaza un `ACQ_REQ` que no
+  crezca y un release con otro número.
+- **Una ronda de invalidación se identifica por (solicitante, `request_id`)**, y el
+  `INVALIDATE_ACK` repite las dos partes: el `request_id` y, en `aux`, el solicitante que traía el
+  `INVALIDATE`. Con la regla anterior esa clave es única en toda la sesión.
+- **Un ACK repetido devuelve `DIR_DUPLICATE`** y no cambia nada. Se reconoce mientras su ronda sea
+  la última de la página; uno de una ronda anterior se rechaza con `DIR_ESTATE`. El coordinador
+  registra el repetido y lo descarta; no aborta.
+- **La despedida cuenta como ACK** de cualquier ronda que esperaba a ese nodo (D0.13), porque su
+  copia deja de existir.
+- **Un evento rechazado no modifica nada ni emite nada.** El coordinador decide si responde
+  `ERROR` o aborta.
+- **`dir_check_invariants`** verifica SWMR, que lectores y ACK pendientes estén contenidos en las
+  copias retenidas, que cada nodo ocupado aparezca en un solo lugar, y además una condición de
+  progreso: después de cada evento la cola quedó tan adelantada como se podía. El coordinador
+  puede llamarla en modo de depuración.
+
+### Por qué
+
+Con el callback, el directorio no reserva colas de acciones ni conoce tramas, y el puntero a los
+datos de una concesión es válido mientras el coordinador los copia: como el coordinador tiene un
+solo hilo (D0.1), nada puede cambiar la página entre la decisión y el envío.
+
+### La correlación, y por qué el primer diseño no alcanzaba
+
+La primera versión emparejaba un `INVALIDATE_ACK` solo por `request_id`. Emmanuel mostró en la
+revisión una secuencia en la que un nodo repite un `request_id` en dos WRITE sobre la misma
+página: el ACK rezagado de la primera ronda se cuenta en la segunda y el WRITE se concede antes de
+que la invalidación real se confirme. Lo grave es que `dir_check_invariants` no lo ve, porque
+desde dentro la ronda se completó de forma legítima, y ninguna semilla de la prueba de estrés lo
+encuentra, porque los trabajadores simulados nunca repiten números.
+
+Su propuesta era exigir `request_id` crecientes por nodo. Eso cierra su secuencia, pero no
+alcanza solo: los `request_id` son únicos **por nodo**, y dos solicitantes distintos pueden usar
+el mismo número. Un ACK rezagado de la ronda del nodo 0 con `request_id` 5 encajaría en una ronda
+posterior del nodo 2 con `request_id` 5. Por eso el ACK repite también al solicitante. Las dos
+reglas juntas vuelven única la clave, y el enunciado pide justamente que el coordinador valide la
+"correspondencia de ACK antes de modificar su estado".
+
+De la misma familia: un release tiene que llevar el `request_id` de su acquire. Si no, un
+`REL_WRITE` con un número equivocado pasaba sin detectarse y el trabajador no podría emparejar la
+confirmación con su operación pendiente.
+
+Costo: el trabajador repite en el ACK un campo que ya recibió, sin bytes extra en la cabecera, y
+`libdsm` (#5) lleva un contador de `request_id` por contexto. Del lado del transporte, `wire_check`
+puede validar el `aux` del `INVALIDATE_ACK` con la misma regla que el del `INVALIDATE`.
+
+### Cómo se validó
+
+17 casos en `tests/test_directory.c`: uno por criterio de aceptación de #3, las validaciones,
+cuatro de correlación (`request_id` creciente, release con su `request_id`, el ACK rezagado del
+mismo solicitante que encontró Emmanuel y el de otro solicitante con el mismo número), y una
+prueba de estrés de 20 semillas × 5000 pasos con cuatro trabajadores simulados que confirman
+invalidaciones en orden aleatorio. Los simulados usan `request_id` con saltos y que se repiten
+entre nodos. Después de cada paso se comprueban los invariantes, que la versión concedida sea la
+última publicada, que los bytes que usa el trabajador (recibidos o de su caché) sean los de esa
+versión y que cada confirmación repita el `request_id` del acceso.
+
+Para comprobar que las pruebas detectan errores reales se inyectaron 15 bugs, uno a la vez, y
+todos hicieron fallar al menos una prueba. Entre ellos: conceder WRITE sin esperar ACK o
+lectores, dejar que un READ se cuele, contar un ACK duplicado, subir la versión después del ACK,
+confiar en la versión declarada, no tratar la despedida como ACK, permitir `request_id`
+repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
+ACK sin el solicitante: con solo la regla de `request_id` creciente,
+`stale_ack_other_requester_same_id` falla.

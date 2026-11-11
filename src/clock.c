@@ -1,4 +1,4 @@
-/* Reutilizado de SOA-P2-GrupoIE (src/clock.c), ver D5. */
+/* Reutilizado de SOA-P2-GrupoIE (src/clock.c), ver D0.5. */
 #include "clock.h"
 
 #include <stdio.h>

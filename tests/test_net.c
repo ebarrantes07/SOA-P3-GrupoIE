@@ -116,7 +116,7 @@ static bool test_sockets_are_configured(void) {
         CHECK((fl & O_NONBLOCK) != 0);     /* precondición del plazo en io.h */
     }
 
-    /* TCP_NODELAY en los conectados (D17). No aplica al que escucha. */
+    /* TCP_NODELAY en los conectados (D1.2). No aplica al que escucha. */
     for (int i = 0; i < 2; i++) {
         int on = 0;
         socklen_t len = sizeof on;

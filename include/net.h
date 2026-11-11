@@ -13,7 +13,7 @@
  *     indefinidamente dentro del sistema y el plazo solo acotaría las esperas
  *     que llegan a ver EAGAIN. Sin esto no habría forma de cumplir el timeout
  *     de 10 segundos ni de detectar una desconexión.
- *   - TCP_NODELAY (D17). Sin él, el algoritmo de Nagle retiene mensajes de
+ *   - TCP_NODELAY (D1.2). Sin él, el algoritmo de Nagle retiene mensajes de
  *     control chicos esperando juntarlos con los siguientes, y los
  *     experimentos medirían el buffer de TCP en vez del protocolo.
  */

@@ -1,5 +1,5 @@
 /* Serialización del protocolo DSM. Ver include/wire.h para el formato y
- * docs/decisiones_diseno.md (D2) para por qué es así.
+ * docs/decisiones_diseno.md (D0.2) para por qué es así.
  *
  * Este módulo no incluye un solo encabezado de sockets: trabaja sobre buffers
  * de bytes y se prueba completo sin red. El transporte vive en io.c.
@@ -140,7 +140,7 @@ enum wire_status wire_check(const struct wire_header *h) {
     if ((h->flags & DSM_WIRE_F_HAS_DATA) != 0u && h->type != DSM_WIRE_ACQ_GRANT)
         return WIRE_BAD_FIELD;
 
-    /* `reserved` vale cero en esta versión del protocolo (D2). Se rechaza por
+    /* `reserved` vale cero en esta versión del protocolo (D0.2). Se rechaza por
      * el mismo argumento que un bit desconocido de `flags`: si no es cero, la
      * trama viene de otro protocolo o está corrupta. Además deja garantizado
      * que hoy el campo es cero, que es lo que hace falta para poder usarlo
@@ -189,15 +189,15 @@ enum wire_status wire_check(const struct wire_header *h) {
 
     /* aux según el tipo. En BARRIER_* es el barrier_id, que el enunciado no
      * acota, así que cualquier valor sirve. En ERROR es un dsm_status, y un
-     * código desconocido se traduce a DSM_EPROTO del lado del receptor (D11),
+     * código desconocido se traduce a DSM_EPROTO del lado del receptor (D0.11),
      * no se rechaza acá. */
     if (h->type == DSM_WIRE_ACQ_REQ &&
         h->aux != DSM_WIRE_MODE_READ && h->aux != DSM_WIRE_MODE_WRITE)
         return WIRE_BAD_FIELD;
 
-    /* En una invalidación, aux es el nodo que pidió la escritura (D12), y su
+    /* En una invalidación, aux es el nodo que pidió la escritura (D0.12), y su
      * confirmación repite ese mismo campo: la ronda se identifica por
-     * (solicitante, request_id), no solo por el número (D21). Las dos tramas
+     * (solicitante, request_id), no solo por el número (D2.1). Las dos tramas
      * se validan igual, porque llevan lo mismo. */
     if ((h->type == DSM_WIRE_INVALIDATE || h->type == DSM_WIRE_INVALIDATE_ACK) &&
         h->aux >= DSM_MAX_NODES)

@@ -1,7 +1,7 @@
 /* clock.h — reloj monotónico compartido por todo el proyecto.
  *
  * Reutilizado de SOA-P2-GrupoIE sin cambios de fondo (ver
- * docs/decisiones_diseno.md, D5).
+ * docs/decisiones_diseno.md, D0.5).
  *
  * Centraliza clock_gettime(CLOCK_MONOTONIC, ...) en un solo lugar. El
  * enunciado exige medir con reloj monotónico la duración local de

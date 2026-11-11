@@ -1,5 +1,5 @@
 # Makefile del Proyecto 3 (MC6004). Estructura heredada del Proyecto 2
-# (SOA-P2-GrupoIE), ver docs/decisiones_diseno.md (D5).
+# (SOA-P2-GrupoIE), ver docs/decisiones_diseno.md (D0.5).
 #
 # Se completa a medida que se agregan módulos: solo construye los ejecutables
 # cuyo main ya existe, así que `make` funciona en cualquier punto del avance.

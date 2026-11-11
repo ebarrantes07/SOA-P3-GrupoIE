@@ -1,4 +1,4 @@
-/* Conexiones TCP. Ver include/net.h y docs/decisiones_diseno.md (D17). */
+/* Conexiones TCP. Ver include/net.h y docs/decisiones_diseno.md (D1.2). */
 #include "net.h"
 
 #include <errno.h>

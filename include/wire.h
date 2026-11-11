@@ -1,6 +1,6 @@
 /* wire.h — formato de trama del protocolo DSM. Encabezado INTERNO.
  *
- * Decisiones en docs/decisiones_diseno.md (D2, D12, D13, D14). Este archivo
+ * Decisiones en docs/decisiones_diseno.md (D0.2, D0.12, D0.13, D0.14). Este archivo
  * es el contrato entre el coordinador y la biblioteca del trabajador: lo
  * congeló E0 (#1) y lo ajustó la revisión del PR #11. Cambiarlo obliga a
  * revisar los dos lados.
@@ -8,7 +8,7 @@
  * Una aplicación NO incluye este archivo: incluye dsm.h, que define la API y
  * los límites públicos. La dirección del include es a propósito —wire.h toma
  * los límites de dsm.h— para que el tamaño de página y los rangos existan en
- * un solo lugar y no se desincronicen (D14).
+ * un solo lugar y no se desincronicen (D0.14).
  *
  * Reglas que vienen del enunciado y que este archivo hace cumplir:
  *
@@ -63,7 +63,7 @@
  *                          lo que manda la biblioteca: la región la define el
  *                          coordinador. Si llega distinto de cero y no
  *                          coincide con la configuración de la sesión, el
- *                          coordinador rechaza el registro (D7).
+ *                          coordinador rechaza el registro (D0.7).
  *   SESSION_START    C->W  24 bytes: u32 nodes, u32 pages, u32 page_size,
  *                          u32 reserved, u64 run_id. De aquí toma el
  *                          trabajador la cantidad de páginas.
@@ -73,13 +73,13 @@
  *                          página si flags trae DSM_WIRE_F_HAS_DATA
  *   INVALIDATE       C->W  sin carga. node_id = destinatario;
  *                          request_id = la solicitud que la causó;
- *                          aux = node_id del nodo SOLICITANTE (D12)
+ *                          aux = node_id del nodo SOLICITANTE (D0.12)
  *   INVALIDATE_ACK   W->C  sin carga. request_id y aux = los del INVALIDATE
- *                          que confirma (solicitud y solicitante, D21)
+ *                          que confirma (solicitud y solicitante, D2.1)
  *   REL_WRITE        W->C  DSM_PAGE_SIZE bytes: la página completa.
- *                          request_id = el del ACQ_REQ del acceso (D21)
+ *                          request_id = el del ACQ_REQ del acceso (D2.1)
  *   REL_WRITE_ACK    C->W  8 bytes: u64 version ya publicada
- *   REL_READ         W->C  sin carga. request_id = el del ACQ_REQ (D21)
+ *   REL_READ         W->C  sin carga. request_id = el del ACQ_REQ (D2.1)
  *   REL_READ_ACK     C->W  sin carga
  *   BARRIER_ARRIVE   W->C  8 bytes: u64 generation, contada por el propio
  *                          trabajador para ese barrier_id. aux = barrier_id
@@ -91,7 +91,7 @@
  *   BYE              W->C  sin carga. Salida ordenada, ver abajo.
  *
  *
- * CORRELACIÓN (D12)
+ * CORRELACIÓN (D0.12)
  *
  * Cada trabajador asigna sus propios request_id, así que un request_id solo
  * identifica una operación junto con el nodo que la originó: la clave es
@@ -106,16 +106,16 @@
  * (pueden saltar, nunca repetirse) y un acceso completo usa uno solo: el
  * ACQ_REQ lo estrena, y la concesión, el release y su confirmación lo
  * repiten. El coordinador rechaza un ACQ_REQ que no crezca y un release con
- * otro request_id (D21).
+ * otro request_id (D2.1).
  *
  * Un INVALIDATE_ACK repite request_id y aux del INVALIDATE que confirma, así
  * que lleva la clave completa de la ronda. Emparejarlo solo por request_id no
  * alcanza: dos nodos pueden usar el mismo número, y un ACK rezagado de una
- * ronda anterior se contaría en la actual (D21, hallazgo de la revisión del
+ * ronda anterior se contaría en la actual (D2.1, hallazgo de la revisión del
  * PR #12). Su node_id es el del nodo que confirma.
  *
  *
- * SALIDA ORDENADA: BYE (D13)
+ * SALIDA ORDENADA: BYE (D0.13)
  *
  * BYE es la despedida que manda DSM_finalize. Al recibirlo, el coordinador:
  *
@@ -171,7 +171,7 @@ struct wire_header {
     uint8_t  version;
     uint8_t  type;
     uint8_t  flags;
-    uint8_t  reserved;    /* cero en esta versión; wire_check lo exige (D2) */
+    uint8_t  reserved;    /* cero en esta versión; wire_check lo exige (D0.2) */
     uint32_t length;      /* bytes de carga después de la cabecera */
     uint32_t node_id;
     uint32_t page_id;     /* DSM_NO_PAGE si el tipo no se refiere a una */

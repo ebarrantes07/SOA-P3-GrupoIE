@@ -8,7 +8,7 @@
  *
  * Lo usa el hilo receptor del trabajador. El coordinador NO lo usa: su ciclo
  * poll() no puede bloquearse, así que arma las tramas con su propio buffer de
- * entrada y wire_decode_header (ver D1 y D16).
+ * entrada y wire_decode_header (ver D0.1 y D1.1).
  *
  * EL FLUJO NO SE RECUPERA DE UNA TRAMA A MEDIAS. Si frame_recv falla después
  * de haber leído la cabecera, los bytes de carga que faltaban siguen en

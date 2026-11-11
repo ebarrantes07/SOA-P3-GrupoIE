@@ -1,7 +1,7 @@
 /* cli.h — conversores estrictos para los argumentos de línea de comandos.
  *
  * Los conversores vienen de SOA-P2-GrupoIE (src/cli.c), ver
- * docs/decisiones_diseno.md (D5). El análisis por rol es distinto en este
+ * docs/decisiones_diseno.md (D0.5). El análisis por rol es distinto en este
  * proyecto — el coordinador recibe puerto, nodos y páginas; cada trabajador
  * recibe host, puerto, nodos e identificador — y se escribe cuando existan
  * los ejecutables, en #4 y #5.

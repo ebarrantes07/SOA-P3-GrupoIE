@@ -1,4 +1,4 @@
-/* Conversores estrictos reutilizados de SOA-P2-GrupoIE (src/cli.c), ver D5. */
+/* Conversores estrictos reutilizados de SOA-P2-GrupoIE (src/cli.c), ver D0.5. */
 #include "cli.h"
 
 #include <errno.h>
