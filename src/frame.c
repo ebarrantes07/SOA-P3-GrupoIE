@@ -12,7 +12,11 @@ static struct frame_io result(enum io_status io, enum wire_status wire) {
 
 struct frame_io frame_send(int fd, const struct wire_header *h,
                            const void *payload, uint64_t deadline_ns) {
-    uint8_t head[DSM_HEADER_SIZE];
+    /* La trama entera se arma acá y sale en una sola escritura. Son 4136
+     * bytes en la pila, el máximo del protocolo; con el hilo receptor y el
+     * de aplicación del trabajador, los dos que envían, es irrelevante
+     * frente a los 8 MB de pila por hilo. */
+    uint8_t frame[DSM_MAX_FRAME];
     enum wire_status wst;
     enum io_status ist;
 
@@ -23,17 +27,22 @@ struct frame_io frame_send(int fd, const struct wire_header *h,
     if (h->length > 0u && payload == NULL)
         return result(IO_OK, WIRE_BAD_LENGTH);
 
-    wire_encode_header(head, h);
+    /* Redundante hoy: wire_check acota `length` al máximo de cada tipo, y el
+     * mayor de todos es DSM_MAX_PAYLOAD. Se queda porque es lo único que
+     * separa un tipo nuevo mal declarado en la tabla de wire.c de un
+     * desborde de esta pila. */
+    if (h->length > DSM_MAX_PAYLOAD)
+        return result(IO_OK, WIRE_BAD_LENGTH);
 
-    ist = io_send_all(fd, head, sizeof head, deadline_ns);
+    wire_encode_header(frame, h);
+    if (h->length > 0u)
+        memcpy(frame + DSM_HEADER_SIZE, payload, h->length);
+
+    ist = io_send_all(fd, frame, (size_t)DSM_HEADER_SIZE + h->length,
+                      deadline_ns);
     if (ist != IO_OK)
         return result(ist, WIRE_OK);
 
-    if (h->length > 0u) {
-        ist = io_send_all(fd, payload, h->length, deadline_ns);
-        if (ist != IO_OK)
-            return result(ist, WIRE_OK);
-    }
     return result(IO_OK, WIRE_OK);
 }
 

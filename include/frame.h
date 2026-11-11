@@ -47,8 +47,17 @@ static inline bool frame_ok(struct frame_io r) {
  * no puede desalinear el flujo del otro. `payload` puede ser NULL solo si
  * h->length es 0.
  *
- * La cabecera y la carga viajan en una sola operación lógica pero pueden
- * necesitar varias llamadas al sistema; eso lo maneja io_send_all. */
+ * UN SOLO EMISOR POR DESCRIPTOR A LA VEZ. Si varios hilos envían por el mismo
+ * socket, quien llama serializa: esta función no lleva candado. La trama se
+ * arma completa y se entrega en una sola llamada a io_send_all, pero una
+ * escritura parcial puede partirla en varias llamadas al sistema, y entre dos
+ * de ellas otro hilo podría meter sus bytes en el medio. El resultado es un
+ * flujo corrupto del que no se vuelve, porque el receptor usa `length` como
+ * única autoridad de dónde termina cada trama (ver el aviso de arriba).
+ *
+ * En el trabajador esto pasa: envían el hilo de aplicación (ACQ_REQ, los
+ * releases, las barreras) y el hilo receptor (INVALIDATE_ACK). La
+ * serialización vive ahí, con un mutex de envío por contexto (#5). */
 struct frame_io frame_send(int fd, const struct wire_header *h,
                            const void *payload, uint64_t deadline_ns);
 

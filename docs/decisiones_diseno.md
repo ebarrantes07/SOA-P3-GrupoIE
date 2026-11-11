@@ -739,3 +739,75 @@ confiar en la versión declarada, no tratar la despedida como ACK, permitir `req
 repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
 ACK sin el solicitante: con solo la regla de `request_id` creciente, `stale_ack_other_requester_same_id`
 falla.
+
+---
+
+## D22 — Cada trama sale en una sola escritura, y un solo emisor por descriptor
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel, a partir de la revisión de Isaac en el PR #13
+
+### Contexto
+
+`frame_send` enviaba la cabecera y la carga con dos llamadas a `io_send_all`. Con `TCP_NODELAY`
+activado (D17), eso produce dos segmentos por cada trama con carga: los 32 bytes de cabecera viajan
+solos y la página de 4096 va aparte. D17 existe para que los experimentos midan el protocolo y no el
+algoritmo de Nagle, y partir cada mensaje en dos trabaja contra ese mismo objetivo.
+
+Hay un segundo problema en la misma función. Dos `io_send_all` seguidos no son atómicos, y en el
+trabajador hay dos hilos que envían por el mismo socket: el de aplicación (`ACQ_REQ`, los releases,
+las barreras) y el receptor (`INVALIDATE_ACK`). Si se intercalan, el flujo queda corrupto sin
+remedio, porque el receptor usa `length` como única autoridad de dónde termina cada trama.
+
+### Decisión
+
+`frame_send` arma la trama completa en un buffer local de `DSM_MAX_FRAME` (4136 bytes) y la entrega
+en **una sola** llamada a `io_send_all`.
+
+Y el contrato de `frame_send` declara la precondición: **un solo emisor por descriptor a la vez**; si
+varios hilos envían por el mismo socket, quien llama serializa. La función no lleva candado. La
+serialización vive en `libdsm` (#5), con un mutex de envío por contexto.
+
+### Por qué
+
+Medido con un shim de `LD_PRELOAD` sobre `send`, enviando un `ACQ_GRANT` con página:
+
+| | llamadas a `send` |
+|---|---|
+| Antes | 2: una de 32 bytes, otra de 4104 |
+| Después | 1: de 4136 bytes |
+
+La alternativa era `sendmsg` con dos `iovec`, que evita copiar la página. Se descartó por una razón
+concreta: ante una escritura parcial habría que avanzar sobre el arreglo de `iovec` recalculando
+cuánto se consumió de cada uno, o sea un **segundo** ciclo de transferencia parcial además del que
+`io_send_all` ya tiene probado. El buffer local deja todo el manejo de `EINTR`, `EAGAIN` y plazos en
+el único camino que las pruebas ya ejercitan, y no cambia `io.h`. El costo es un `memcpy` de hasta
+4096 bytes por trama, despreciable frente a la llamada al sistema y a la red.
+
+Los 4136 bytes van en la pila: con dos hilos que envían y 8 MB de pila por hilo, no es un problema.
+Queda además un chequeo redundante de `length > DSM_MAX_PAYLOAD` antes de copiar. Hoy no puede
+dispararse, porque `wire_check` ya acota la longitud al máximo de cada tipo; se queda porque es lo
+único que separa un tipo nuevo mal declarado en la tabla de `wire.c` de un desborde de esa pila.
+
+### Una sola llamada a `io_send_all` no es una sola llamada al sistema
+
+Es importante no confundir las dos cosas, porque de eso depende que la precondición siga siendo
+necesaria. Con el límite de fragmentación en 1000 (D19), la misma trama sale así:
+
+```
+send #1: 1000 bytes    send #4: 1000 bytes
+send #2: 1000 bytes    send #5:  136 bytes
+send #3: 1000 bytes
+```
+
+Cinco llamadas al sistema, y entre cualquiera de ellas otro hilo podría meter sus bytes en el medio.
+Enviar en una sola operación lógica reduce los segmentos en el caso normal; **no** vuelve atómico el
+envío. Por eso la precondición es parte del contrato y no una consecuencia de este cambio.
+
+### Cómo se validó
+
+Las 62 pruebas de la suite pasan, y también con `DSM_IO_CHUNK_MAX` en 1, en 7 y en 1000: los
+round-trip de `test_frame` recorren el camino nuevo con la trama partida en pedazos de un byte, que
+es el caso que atraparía un error en el offset de la copia. El conteo de `send` se midió con el shim
+descrito arriba, antes y después.
