@@ -440,3 +440,110 @@ binario, así que matarlo a él antes de que reenvíe la señal deja el binario 
 lanza con `setsid` para que sea líder de su grupo, de modo que `kill -- -PID` alcance a los dos sin
 depender de ninguna carrera. Verificado con una prueba que duerme 30 s, en tres corridas seguidas,
 comprobando por nombre de proceso que no queda nada vivo.
+
+---
+
+## D21 — El directorio es una máquina de estados que recibe eventos y emite acciones
+
+- **Fecha:** 2026-11-09, corregida el 2026-11-10 con la revisión del PR #12
+- **Issue:** [#3](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/3)
+- **Quién decide:** Isaac; la corrección de la correlación sale de un hallazgo de Emmanuel
+
+Esta entrada se escribió como D16 y se renumeró a D21 porque la rama de E1 (#13) usa D16 a D20.
+Se acordó desempatar por issue de origen y, cuando las dos ramas estén en `main`, renumerar toda
+la bitácora a `Di.j` (issue de origen, consecutivo) en un commit aparte.
+
+### Contexto
+
+El directorio es el núcleo de corrección: decide a quién conceder, a quién invalidar y cuándo. El
+issue pide probarlo sin red, y el coordinador (#4) tiene que poder usarlo sin que el directorio
+sepa nada de sockets ni de tramas.
+
+### Decisión
+
+`directory.h` expone un evento por cada mensaje que le importa (`dir_acquire`,
+`dir_invalidate_ack`, `dir_release_write`, `dir_release_read`, `dir_node_leave`) y responde
+emitiendo acciones por un callback (`GRANT`, `INVALIDATE`, `WRITE_PUBLISHED`, `READ_RELEASED`),
+cada una con todo lo que necesita la trama: destinatario, página, `request_id`, solicitante, modo,
+versión y, si corresponde, los datos. El coordinador traduce cada acción a una trama dentro del
+callback; las pruebas la registran.
+
+Detalles que quedan fijados:
+
+- **Las acciones se emiten en el orden en que deben enviarse.** Un release WRITE publica y sube la
+  versión antes de emitir su confirmación, y la confirmación sale antes que las concesiones que
+  habilita. El coordinador no reordena nada.
+- **Las copias retenidas son una máscara, sin versión por nodo.** La versión solo cambia al
+  publicar un WRITE, y antes de concederlo se invalidaron todas las copias ajenas; por lo tanto
+  toda copia retenida es de la versión vigente. Los datos se omiten solo si el nodo figura como
+  copia retenida **y** declara esa versión: el directorio no confía en la declaración sola.
+- **La ronda de invalidación se abre cuando el WRITE llega a la cabeza y no hay lectores activos**,
+  no antes. Es lo que pide el enunciado ("se espera a que terminen los accesos activos
+  anteriores") y deja un único momento en que se calcula a quién invalidar.
+- **Un acceso completo lleva un solo `request_id`**, el de su `ACQ_REQ`, que se repite en la
+  concesión, en el release y en su confirmación. Los `request_id` de un nodo **crecen
+  estrictamente** (pueden saltar, nunca repetirse) y el directorio rechaza un `ACQ_REQ` que no
+  crezca y un release con otro número.
+- **Una ronda de invalidación se identifica por (solicitante, `request_id`)**, y el
+  `INVALIDATE_ACK` repite las dos partes: el `request_id` y, en `aux`, el solicitante que traía el
+  `INVALIDATE`. Con la regla anterior esa clave es única en toda la sesión.
+- **Un ACK repetido devuelve `DIR_DUPLICATE`** y no cambia nada. Se reconoce mientras su ronda sea
+  la última de la página; uno de una ronda anterior se rechaza con `DIR_ESTATE`. El coordinador
+  registra el repetido y lo descarta; no aborta.
+- **La despedida cuenta como ACK** de cualquier ronda que esperaba a ese nodo (D13), porque su
+  copia deja de existir.
+- **Un evento rechazado no modifica nada ni emite nada.** El coordinador decide si responde
+  `ERROR` o aborta.
+- **`dir_check_invariants`** verifica SWMR, que lectores y ACK pendientes estén contenidos en las
+  copias retenidas, que cada nodo ocupado aparezca en un solo lugar, y además una condición de
+  progreso: después de cada evento la cola quedó tan adelantada como se podía. El coordinador
+  puede llamarla en modo de depuración.
+
+### Por qué
+
+Con el callback, el directorio no reserva colas de acciones ni conoce tramas, y el puntero a los
+datos de una concesión es válido mientras el coordinador los copia: como el coordinador tiene un
+solo hilo (D1), nada puede cambiar la página entre la decisión y el envío.
+
+### La correlación, y por qué el primer diseño no alcanzaba
+
+La primera versión emparejaba un `INVALIDATE_ACK` solo por `request_id`. Emmanuel mostró en la
+revisión una secuencia en la que un nodo repite un `request_id` en dos WRITE sobre la misma
+página: el ACK rezagado de la primera ronda se cuenta en la segunda y el WRITE se concede antes de
+que la invalidación real se confirme. Lo grave es que `dir_check_invariants` no lo ve, porque
+desde dentro la ronda se completó de forma legítima, y ninguna semilla de la prueba de estrés lo
+encuentra, porque los trabajadores simulados nunca repiten números.
+
+Su propuesta era exigir `request_id` crecientes por nodo. Eso cierra su secuencia, pero no
+alcanza solo: los `request_id` son únicos **por nodo**, y dos solicitantes distintos pueden usar
+el mismo número. Un ACK rezagado de la ronda del nodo 0 con `request_id` 5 encajaría en una ronda
+posterior del nodo 2 con `request_id` 5. Por eso el ACK repite también al solicitante. Las dos
+reglas juntas vuelven única la clave, y el enunciado pide justamente que el coordinador valide la
+"correspondencia de ACK antes de modificar su estado".
+
+De la misma familia: un release tiene que llevar el `request_id` de su acquire. Si no, un
+`REL_WRITE` con un número equivocado pasaba sin detectarse y el trabajador no podría emparejar la
+confirmación con su operación pendiente.
+
+Costo: el trabajador repite en el ACK un campo que ya recibió, sin bytes extra en la cabecera, y
+`libdsm` (#5) lleva un contador de `request_id` por contexto. Del lado del transporte, `wire_check`
+puede validar el `aux` del `INVALIDATE_ACK` con la misma regla que el del `INVALIDATE`.
+
+### Cómo se validó
+
+17 casos en `tests/test_directory.c`: uno por criterio de aceptación de #3, las validaciones,
+cuatro de correlación (`request_id` creciente, release con su `request_id`, el ACK rezagado del
+mismo solicitante que encontró Emmanuel y el de otro solicitante con el mismo número), y una
+prueba de estrés de 20 semillas × 5000 pasos con cuatro trabajadores simulados que confirman
+invalidaciones en orden aleatorio. Los simulados usan `request_id` con saltos y que se repiten
+entre nodos. Después de cada paso se comprueban los invariantes, que la versión concedida sea la
+última publicada, que los bytes que usa el trabajador (recibidos o de su caché) sean los de esa
+versión y que cada confirmación repita el `request_id` del acceso.
+
+Para comprobar que las pruebas detectan errores reales se inyectaron 15 bugs, uno a la vez, y
+todos hicieron fallar al menos una prueba. Entre ellos: conceder WRITE sin esperar ACK o
+lectores, dejar que un READ se cuele, contar un ACK duplicado, subir la versión después del ACK,
+confiar en la versión declarada, no tratar la despedida como ACK, permitir `request_id`
+repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
+ACK sin el solicitante: con solo la regla de `request_id` creciente, `stale_ack_other_requester_same_id`
+falla.
