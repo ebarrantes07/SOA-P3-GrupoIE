@@ -74,10 +74,12 @@
  *   INVALIDATE       C->W  sin carga. node_id = destinatario;
  *                          request_id = la solicitud que la causó;
  *                          aux = node_id del nodo SOLICITANTE (D12)
- *   INVALIDATE_ACK   W->C  sin carga. request_id = el de la invalidación
- *   REL_WRITE        W->C  DSM_PAGE_SIZE bytes: la página completa
+ *   INVALIDATE_ACK   W->C  sin carga. request_id y aux = los del INVALIDATE
+ *                          que confirma (solicitud y solicitante, D21)
+ *   REL_WRITE        W->C  DSM_PAGE_SIZE bytes: la página completa.
+ *                          request_id = el del ACQ_REQ del acceso (D21)
  *   REL_WRITE_ACK    C->W  8 bytes: u64 version ya publicada
- *   REL_READ         W->C  sin carga
+ *   REL_READ         W->C  sin carga. request_id = el del ACQ_REQ (D21)
  *   REL_READ_ACK     C->W  sin carga
  *   BARRIER_ARRIVE   W->C  8 bytes: u64 generation, contada por el propio
  *                          trabajador para ese barrier_id. aux = barrier_id
@@ -100,9 +102,17 @@
  * causó sin llevar contabilidad aparte, y ese log es justamente lo que lee el
  * verificador de invariantes.
  *
- * Para emparejar un INVALIDATE_ACK basta con (page_id, nodo que responde,
- * request_id), porque el ACK viaja en sentido contrario y su node_id ya es el
- * del nodo que confirma.
+ * Los request_id de un trabajador crecen estrictamente durante la sesión
+ * (pueden saltar, nunca repetirse) y un acceso completo usa uno solo: el
+ * ACQ_REQ lo estrena, y la concesión, el release y su confirmación lo
+ * repiten. El coordinador rechaza un ACQ_REQ que no crezca y un release con
+ * otro request_id (D21).
+ *
+ * Un INVALIDATE_ACK repite request_id y aux del INVALIDATE que confirma, así
+ * que lleva la clave completa de la ronda. Emparejarlo solo por request_id no
+ * alcanza: dos nodos pueden usar el mismo número, y un ACK rezagado de una
+ * ronda anterior se contaría en la actual (D21, hallazgo de la revisión del
+ * PR #12). Su node_id es el del nodo que confirma.
  *
  *
  * SALIDA ORDENADA: BYE (D13)

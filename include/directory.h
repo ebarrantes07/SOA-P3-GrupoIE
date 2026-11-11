@@ -7,7 +7,11 @@
  * quién conceder, a quién invalidar y a quién confirmar. El coordinador
  * traduce cada acción a una trama; las pruebas la registran y la comparan.
  * Así los invariantes se prueban alimentando secuencias de eventos, sin
- * sockets de por medio (ver docs/decisiones_diseno.md, D16).
+ * sockets de por medio (ver docs/decisiones_diseno.md, D21).
+ *
+ * Es un encabezado interno del coordinador, así que incluye wire.h: los
+ * valores que recibe (DSM_NO_VERSION, request_id, el solicitante en aux) son
+ * los del protocolo.
  *
  *
  * ESTADO POR PÁGINA
@@ -52,6 +56,18 @@
  * un solo hilo (D1), ningún otro evento puede cambiar la página mientras tanto.
  *
  *
+ * CORRELACIÓN (D12, D21)
+ *
+ * Un acceso completo lleva un solo request_id: el de su ACQ_REQ, que se
+ * repite en la concesión, en el release y en su confirmación. Los request_id
+ * de un mismo nodo crecen estrictamente; pueden saltar (la biblioteca usa el
+ * mismo contador para barreras), pero nunca repetirse ni bajar. Así la clave
+ * (solicitante, request_id) es única en toda la sesión, y es la que identifica
+ * una ronda de invalidación: un ACK de invalidación tiene que repetir las dos
+ * partes. Un ACK rezagado de una ronda anterior se rechaza en vez de contarse
+ * en la actual, aunque el número coincida.
+ *
+ *
  * QUÉ NO HACE
  *
  * No valida tramas (eso es wire_check), no lleva sesión ni barreras (E3, #4)
@@ -66,6 +82,7 @@
 #include <stdint.h>
 
 #include "dsm.h"
+#include "wire.h"
 
 /* Resultado de un evento. Ninguno distinto de DIR_OK cambia el estado. */
 enum dir_status {
@@ -73,9 +90,10 @@ enum dir_status {
     DIR_EINVAL,       /* nodo o página fuera de rango, modo desconocido,
                        * puntero nulo */
     DIR_ESTATE,       /* el evento no corresponde al estado: solicitud con
-                       * otra en curso, release sin acceso o de otro modo,
-                       * ACK que nadie pidió, despedida con un acceso vivo,
-                       * evento de un nodo que ya se despidió */
+                       * otra en curso, request_id que no crece, release
+                       * sin acceso, de otro modo o con otro request_id,
+                       * ACK que nadie pidió o de otra ronda, despedida con
+                       * un acceso vivo, evento de un nodo que ya se fue */
     DIR_DUPLICATE     /* ACK de invalidación ya contado. No es un error del
                        * protocolo que obligue a abortar: se registra y se
                        * descarta, y no cambia nada */
@@ -93,9 +111,9 @@ struct dir_action {
     enum dir_action_type type;
     uint32_t node;           /* destinatario de la trama */
     uint32_t page_id;
-    uint64_t request_id;     /* GRANT/ACK: el de la solicitud que se responde.
-                              * INVALIDATE: el de la solicitud WRITE que la
-                              * causó (D12) */
+    uint64_t request_id;     /* GRANT y confirmaciones: el del acceso, que es
+                              * el de su ACQ_REQ. INVALIDATE: el de la
+                              * solicitud WRITE que la causó (D12) */
     uint32_t requester;      /* INVALIDATE: nodo que pidió el WRITE, va en aux
                               * (D12). En las demás es igual a `node` */
     enum dsm_mode mode;      /* GRANT: modo concedido */
@@ -139,18 +157,21 @@ void dir_destroy(dir *d);
  * trabajador (DSM_NO_VERSION si no tiene copia válida). Concede de inmediato
  * si las reglas lo permiten, o encola la solicitud; en los dos casos devuelve
  * DIR_OK y lo que se concedió llega por `emit`. Un nodo tiene a lo sumo una
- * solicitud o un acceso en curso en todo el directorio. */
+ * solicitud o un acceso en curso en todo el directorio, y `request_id` debe
+ * ser mayor que el de su solicitud anterior (DIR_ESTATE si no). */
 enum dir_status dir_acquire(dir *d, uint32_t node, uint32_t page_id,
                             enum dsm_mode mode, uint64_t request_id,
                             uint64_t cached_version);
 
-/* INVALIDATE_ACK de `node` para `page_id`. `request_id` debe ser el de la
- * ronda de invalidación (el de la solicitud WRITE que la causó). Un ACK
- * repetido de la misma ronda devuelve DIR_DUPLICATE y no cuenta. */
+/* INVALIDATE_ACK de `node` para `page_id`. `requester` y `request_id` son los
+ * que traía el INVALIDATE (aux y request_id) y deben identificar la ronda en
+ * curso. Un ACK repetido de la última ronda devuelve DIR_DUPLICATE y no
+ * cuenta; uno de una ronda anterior devuelve DIR_ESTATE. */
 enum dir_status dir_invalidate_ack(dir *d, uint32_t node, uint32_t page_id,
-                                   uint64_t request_id);
+                                   uint32_t requester, uint64_t request_id);
 
-/* REL_WRITE de `node`, que debe ser el escritor activo de `page_id`. `data`
+/* REL_WRITE de `node`, que debe ser el escritor activo de `page_id`, con el
+ * mismo `request_id` con que adquirió (DIR_ESTATE si no). `data`
  * son los DSM_PAGE_SIZE bytes de la página, recibidos COMPLETOS: el
  * coordinador solo llama aquí con la trama entera, así una transferencia
  * incompleta nunca se publica. Publica, sube la versión, emite
@@ -158,7 +179,8 @@ enum dir_status dir_invalidate_ack(dir *d, uint32_t node, uint32_t page_id,
 enum dir_status dir_release_write(dir *d, uint32_t node, uint32_t page_id,
                                   const uint8_t *data, uint64_t request_id);
 
-/* REL_READ de `node`, que debe ser lector activo de `page_id`. Su copia queda
+/* REL_READ de `node`, que debe ser lector activo de `page_id`, con el mismo
+ * `request_id` con que adquirió (DIR_ESTATE si no). Su copia queda
  * retenida y revocable. Emite READ_RELEASED y después las concesiones que eso
  * habilite. */
 enum dir_status dir_release_read(dir *d, uint32_t node, uint32_t page_id,

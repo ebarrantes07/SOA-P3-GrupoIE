@@ -31,6 +31,9 @@ enum node_state {
 struct node {
     enum node_state state;
     uint32_t        page;    /* válido si state != NODE_IDLE */
+    uint64_t        request; /* request_id del acceso en curso o del último;
+                              * los request_id de un nodo solo crecen (D21) */
+    bool            has_request;
 };
 
 struct page {
@@ -271,28 +274,42 @@ enum dir_status dir_acquire(dir *d, uint32_t node, uint32_t page_id,
     if (d->node[node].state != NODE_IDLE)
         return DIR_ESTATE;   /* adquisición anidada o solicitud duplicada */
 
+    /* Los request_id de un nodo crecen estrictamente. Junto con el
+     * solicitante que repite el ACK, eso vuelve única la clave de cada ronda
+     * de invalidación en toda la sesión, y un ACK rezagado de una ronda
+     * anterior no puede confundirse con el de la actual (D21). */
+    if (d->node[node].has_request && request_id <= d->node[node].request)
+        return DIR_ESTATE;
+
     struct request r = {
         .node           = node,
         .mode           = mode,
         .request_id     = request_id,
         .cached_version = cached_version,
     };
-    d->node[node].state = NODE_WAITING;
-    d->node[node].page  = page_id;
+    d->node[node].state       = NODE_WAITING;
+    d->node[node].page        = page_id;
+    d->node[node].request     = request_id;
+    d->node[node].has_request = true;
     queue_push(&d->page[page_id], &r);
     pump(d, page_id);
     return DIR_OK;
 }
 
 enum dir_status dir_invalidate_ack(dir *d, uint32_t node, uint32_t page_id,
-                                   uint64_t request_id) {
+                                   uint32_t requester, uint64_t request_id) {
     enum dir_status st = check_ids(d, node, page_id);
     if (st != DIR_OK)
         return st;
+    if (requester >= d->nodes)
+        return DIR_EINVAL;
 
+    /* La ronda se identifica por (solicitante, request_id), no solo por el
+     * request_id: los request_id son únicos por nodo, no en la sesión. */
     struct page *p = &d->page[page_id];
-    if (!p->round_known || p->round_request != request_id)
-        return DIR_ESTATE;   /* ACK de una ronda que no existe */
+    if (!p->round_known || p->round_requester != requester ||
+        p->round_request != request_id)
+        return DIR_ESTATE;   /* ACK de una ronda que no es la última */
     if (p->inval_acked & bit(node))
         return DIR_DUPLICATE;
     if (!p->round_open || !(p->inval_pending & bit(node)))
@@ -313,8 +330,8 @@ enum dir_status dir_release_write(dir *d, uint32_t node, uint32_t page_id,
         return DIR_EINVAL;
 
     struct page *p = &d->page[page_id];
-    if (p->writer != (int32_t)node)
-        return DIR_ESTATE;
+    if (p->writer != (int32_t)node || d->node[node].request != request_id)
+        return DIR_ESTATE;   /* no es el escritor, o no es SU acceso */
 
     /* Publicación: datos y versión cambian ANTES de confirmar al escritor,
      * y la confirmación sale ANTES que las concesiones que habilita. */
@@ -347,8 +364,8 @@ enum dir_status dir_release_read(dir *d, uint32_t node, uint32_t page_id,
         return st;
 
     struct page *p = &d->page[page_id];
-    if (!(p->readers & bit(node)))
-        return DIR_ESTATE;
+    if (!(p->readers & bit(node)) || d->node[node].request != request_id)
+        return DIR_ESTATE;   /* no es lector, o no es SU acceso */
 
     /* La copia queda en `holders`: retenida y revocable. */
     p->readers &= (uint8_t)~bit(node);
@@ -492,7 +509,8 @@ bool dir_check_invariants(const dir *d) {
             const struct request *r = &p->queue[(p->qhead + k) % DSM_MAX_NODES];
             if (r->node >= d->nodes || (d->left & bit(r->node)))
                 return false;
-            if (d->node[r->node].state != NODE_WAITING || d->node[r->node].page != i)
+            if (d->node[r->node].state != NODE_WAITING || d->node[r->node].page != i ||
+                d->node[r->node].request != r->request_id)
                 return false;
             seen[r->node]++;
         }
