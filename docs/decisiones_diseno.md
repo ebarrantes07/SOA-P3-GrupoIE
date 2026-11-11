@@ -92,12 +92,29 @@ Las versiones de página son de 64 bits y viajan en la carga, no en `aux`.
   variable.
 - Una cabecera de tamaño fijo hace trivial la regla de recepción: leer 32 bytes, validar, y leer
   exactamente `length` más.
+- `reserved` deja espacio para un campo chico futuro sin cambiar `DSM_HEADER_SIZE`, sin inventar un
+  tipo de mensaje y sin tocar esa regla de recepción. Para que eso sirva de algo, `wire_check` exige
+  que hoy valga cero: un receptor que lo ignorara seguiría adelante interpretando mal una trama que
+  no entiende, mientras que rechazarla hace que el cambio se note el día que ocurra. Un byte
+  reservado que nadie verifica no está reservado, está sin usar.
+- De paso, el byte deja la cabecera en 32 y todos los campos multibyte en múltiplos de 4 (`length` en
+  8, `request_id` en 16, `aux` en 28), lo que hace legible un volcado hexadecimal de 16 bytes por
+  línea. Sin él serían 31 bytes y offsets impares. No es por alineación de acceso: los enteros se
+  arman byte por byte con corrimientos (D16), así que ningún campo se lee como entero desde el buffer.
 
 ### Alternativa descartada
 
 Cabecera de longitud variable con campos opcionales por tipo. Ahorra algunos bytes y complica
 todas las validaciones; con 4 nodos y páginas de 4 KB, 32 bytes de cabecera son irrelevantes
-frente a la carga.
+frente a la carga. El byte reservado cuesta 1 de 4136 en una trama con página: 0,02 %.
+
+### Una trampa que conviene dejar escrita
+
+`sizeof(struct wire_header)` también da 32 en x86-64, pero es casualidad y los offsets **no**
+coinciden con el cable: en memoria `length` cae en 4 y `request_id` en 24, mientras que en el cable
+van en 8 y en 16. Quien vea los dos 32 iguales y se tiente con un `memcpy` de la estructura al
+buffer produce una trama con los campos corridos. Es exactamente lo que esta decisión prohíbe al
+exigir serializar campo por campo.
 
 ---
 
