@@ -140,6 +140,14 @@ enum wire_status wire_check(const struct wire_header *h) {
     if ((h->flags & DSM_WIRE_F_HAS_DATA) != 0u && h->type != DSM_WIRE_ACQ_GRANT)
         return WIRE_BAD_FIELD;
 
+    /* `reserved` vale cero en esta versión del protocolo (D2). Se rechaza por
+     * el mismo argumento que un bit desconocido de `flags`: si no es cero, la
+     * trama viene de otro protocolo o está corrupta. Además deja garantizado
+     * que hoy el campo es cero, que es lo que hace falta para poder usarlo
+     * algún día sin romper nada. */
+    if (h->reserved != 0u)
+        return WIRE_BAD_FIELD;
+
     /* En una concesión, la bandera y la longitud tienen que contarse la misma
      * historia: con datos son la versión más la página, y sin datos es solo
      * la versión. Es el chequeo que atrapa una concesión que dice traer la
@@ -187,8 +195,12 @@ enum wire_status wire_check(const struct wire_header *h) {
         h->aux != DSM_WIRE_MODE_READ && h->aux != DSM_WIRE_MODE_WRITE)
         return WIRE_BAD_FIELD;
 
-    /* En una invalidación, aux es el nodo que pidió la escritura (D12). */
-    if (h->type == DSM_WIRE_INVALIDATE && h->aux >= DSM_MAX_NODES)
+    /* En una invalidación, aux es el nodo que pidió la escritura (D12), y su
+     * confirmación repite ese mismo campo: la ronda se identifica por
+     * (solicitante, request_id), no solo por el número (D21). Las dos tramas
+     * se validan igual, porque llevan lo mismo. */
+    if ((h->type == DSM_WIRE_INVALIDATE || h->type == DSM_WIRE_INVALIDATE_ACK) &&
+        h->aux >= DSM_MAX_NODES)
         return WIRE_BAD_FIELD;
 
     return WIRE_OK;

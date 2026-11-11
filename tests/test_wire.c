@@ -308,6 +308,41 @@ static bool test_node_and_aux_rules(void) {
     inval.aux = 0;
     CHECK(wire_check(&inval) == WIRE_OK);
 
+    /* Y su confirmación repite ese mismo campo, porque la ronda se identifica
+     * por (solicitante, request_id) y no solo por el número (D21). Si acá no
+     * se acotara, el coordinador recibiría un solicitante fuera de rango y
+     * tendría que defenderse él: la trama ya no sería válida pero pasaría. */
+    struct wire_header ack = valid_for(DSM_WIRE_INVALIDATE_ACK);
+    ack.aux = DSM_MAX_NODES;
+    CHECK(wire_check(&ack) == WIRE_BAD_FIELD);
+    ack.aux = DSM_MAX_NODES - 1u;
+    CHECK(wire_check(&ack) == WIRE_OK);
+
+    return true;
+}
+
+/* `reserved` vale cero en esta versión (D2). Se prueba por el camino real,
+ * el de decodificar: el byte 7 llega del cable, y es ahí donde un valor
+ * distinto de cero tiene que detener la trama. */
+static bool test_reserved_must_be_zero(void) {
+    struct wire_header h = valid_for(DSM_WIRE_BYE);
+    CHECK(wire_check(&h) == WIRE_OK);
+
+    h.reserved = 1u;
+    CHECK(wire_check(&h) == WIRE_BAD_FIELD);
+
+    /* En el cable: se arma una trama válida y se ensucia solo el byte 7. */
+    uint8_t buf[DSM_HEADER_SIZE];
+    struct wire_header ok = valid_for(DSM_WIRE_BYE);
+    wire_encode_header(buf, &ok);
+    CHECK(buf[7] == 0u);
+
+    struct wire_header out;
+    CHECK(wire_decode_header(buf, &out) == WIRE_OK);
+
+    buf[7] = 0xFFu;
+    CHECK(wire_decode_header(buf, &out) == WIRE_BAD_FIELD);
+
     return true;
 }
 
@@ -367,6 +402,7 @@ int main(void) {
         {"flag_rules", test_flag_rules},
         {"page_id_rules", test_page_id_rules},
         {"node_and_aux_rules", test_node_and_aux_rules},
+        {"reserved_must_be_zero", test_reserved_must_be_zero},
         {"decode_leaves_output_untouched", test_decode_leaves_output_untouched},
         {"names_and_statuses", test_names_and_statuses},
     };

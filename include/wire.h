@@ -171,7 +171,7 @@ struct wire_header {
     uint8_t  version;
     uint8_t  type;
     uint8_t  flags;
-    uint8_t  reserved;
+    uint8_t  reserved;    /* cero en esta versión; wire_check lo exige (D2) */
     uint32_t length;      /* bytes de carga después de la cabecera */
     uint32_t node_id;
     uint32_t page_id;     /* DSM_NO_PAGE si el tipo no se refiere a una */
