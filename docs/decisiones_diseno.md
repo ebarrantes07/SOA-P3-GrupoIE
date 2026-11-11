@@ -975,3 +975,77 @@ con tramas válidas es inalcanzable: solo `ACQ_GRANT` y `REL_WRITE` admiten carg
 la mayor de las demás es `ERROR` con 256. Se agregó un caso que le pasa a propósito un tipo chico
 con longitud de página, porque estas funciones no validan tramas y el chequeo de tipo es lo único
 que las separa de contar una transferencia inventada. Con ese caso, el quinto mutante también cae.
+
+---
+
+## D3.2 — Cada conexión tiene dos buffers fijos, y la salida llena significa un nodo que no lee
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El issue pide un buffer de entrada y otro de salida por conexión *"de modo que una escritura
+parcial no bloquee la recepción de nada"*. Con un solo hilo (D0.1), bloquearse en un nodo detiene
+a los otros tres, que es justo lo que el enunciado prohíbe.
+
+Ya existe `frame.h` (D1.5), pero no sirve acá: `frame_recv` lee hasta completar la trama y
+`frame_send` escribe hasta vaciarla. Las dos son correctas para el hilo receptor del trabajador,
+que no tiene nada mejor que hacer mientras espera.
+
+### Decisión
+
+El ciclo es el inverso al de `frame`: se leen los bytes que haya, se extraen las tramas
+**completas** que ya estén, y lo que quedó a medias espera en el buffer hasta la próxima vuelta del
+`poll()`. Igual del lado de la salida: se encolan tramas enteras y se escribe lo que el socket
+acepte.
+
+**El núcleo no toca sockets.** `conn_feed`, `conn_next`, `conn_queue` y `conn_take` son funciones
+puras sobre los dos buffers; el socket aparece solo en `conn_recv` y `conn_send`, que son un
+intento de `io_read_some`/`io_write_some` y nada más. Es lo que permite forzar de forma
+determinista los casos que en una red real aparecen por azar.
+
+**Una cabecera inválida no se consume.** Se reporta el motivo y los bytes se quedan donde están.
+Podría parecer que conviene saltarse los 32 bytes y resincronizar, pero si la cabecera es basura su
+`length` también lo es, así que no se sabe dónde empezaría la trama siguiente: no hay nada a qué
+resincronizar. El flujo murió y quien llama aborta esa sesión, que es lo mismo que ya decía D1.5.
+
+### El buffer de salida, y por qué puede fallar al encolar
+
+Lo que un nodo puede tener encolado está acotado por el protocolo: a lo sumo una concesión con
+página (4136 bytes), porque un nodo tiene a lo sumo un acceso en curso; a lo sumo N−1
+invalidaciones, porque cada ronda abierta corresponde a una solicitud WRITE en la cabeza de alguna
+página y cada una es de un nodo distinto (D2.1); y unas pocas confirmaciones. Menos de 5 KB.
+
+Pero esa cota vale para un nodo que se comporta. Uno que deje de leer su socket y siga enviando
+—por ejemplo, llegadas a barrera de varias generaciones sin esperar ninguna liberación— puede
+acumular salida sin tope. Por eso `conn_queue` puede devolver false, y cuando lo hace **no es un
+error del coordinador**: es un nodo que no respeta el protocolo, y se trata como una desconexión.
+
+Se descartó un buffer creciente: solo cambiaría el síntoma de "se llenó el buffer de un nodo" a
+"se agotó la memoria del coordinador", que es peor porque se lleva la sesión entera en vez de una
+conexión. La capacidad quedó en 16 KB, cómodamente por encima de los 5 KB del caso legítimo, para
+que llenarla signifique de verdad que el par dejó de leer y no que la cota estaba justa.
+
+### Cómo se validó
+
+13 casos, casi todos sin red: una trama partida en 4136 pedazos de un byte (ninguna trama hasta el
+último), dos tramas en una sola lectura, una entera más el principio de la siguiente, una cabecera
+inválida que no se consume, los bytes encolados comparados contra lo que serializa el emisor, el
+rechazo de una cabecera inválida sin tocar el buffer, la salida llena que rechaza sin truncar, y
+una escritura parcial reanudada en pedazos de 100, 1 y 500 bytes que reconstruye los bytes exactos.
+
+El último caso sí usa TCP: un hilo emisor con el límite de fragmentación en 1 byte manda tres
+tramas con página, para que lo anterior no quede verificado solo contra mi propio modelo de cómo
+llegan los bytes.
+
+Se inyectaron cinco errores. Cuatro caen de inmediato: consumir la cabecera inválida, entregar la
+trama sin esperar la carga completa, encolar sin validar y no avanzar la cabeza en `conn_take`.
+
+El quinto —no compactar nunca el buffer de entrada— **pasaba las 12 pruebas**. Los dos casos
+fáciles no lo ejercitan: si se consume todo, `conn_next` devuelve la cabeza a cero por su cuenta, y
+si el sobrante es chico lo que llega entra al final sin mover nada. Hace falta que la cabeza esté
+avanzada **y** que lo que llega no quepa al final aunque sí quepa en el total. Se agregó ese caso,
+construido con la aritmética exacta del buffer, y con él el mutante revienta con SEGV en vez de
+pasar.
