@@ -49,9 +49,33 @@ enum net_status net_listen(const char *host, uint16_t port, int backlog,
 enum net_status net_accept(int listen_fd, int *out_fd, uint64_t deadline_ns);
 
 /* Conecta con `host`:`port`. Retorna cuando la conexión está establecida o
- * vence el plazo; un rechazo del otro extremo es NET_ERROR con ECONNREFUSED. */
+ * vence el plazo; un rechazo del otro extremo es NET_ERROR con ECONNREFUSED.
+ *
+ * Un nombre resuelve con AF_UNSPEC, así que puede dar varias direcciones
+ * (IPv6 y IPv4) y se prueban en orden. EL PLAZO ES PARA LA LLAMADA COMPLETA,
+ * y se reparte entre las direcciones que faltan: si la primera no responde no
+ * se come el plazo de las siguientes, y la última se queda con lo que sobre.
+ * Si ninguna llega a conectar, el estado dice qué pasó con la última que se
+ * pudo intentar: NET_TIMEOUT si alguna agotó su parte, NET_ERROR si todas
+ * fallaron antes. En NET_ERROR, `errno` queda con el motivo de ese último
+ * fallo. */
 enum net_status net_connect(const char *host, uint16_t port, int *out_fd,
                             uint64_t deadline_ns);
+
+/* Reparte lo que queda de un plazo absoluto entre las direcciones que faltan
+ * por probar, incluida la actual: devuelve el plazo que le toca a esta.
+ *
+ * `deadline_ns` 0 significa sin plazo y devuelve 0. Con una sola dirección
+ * restante devuelve el plazo completo, así la última se queda con todo lo que
+ * sobre en vez de perderlo — y eso sale de la división misma, no de un caso
+ * aparte. Un plazo ya vencido se devuelve tal cual, para que io_wait lo
+ * reporte de inmediato. `left` en 0 no debería ocurrir; devuelve el plazo
+ * completo en vez de dividir por cero.
+ *
+ * Es un detalle de net_connect, expuesto porque es la parte que se puede
+ * probar sin depender de que un nombre resuelva a varias direcciones. */
+uint64_t net_deadline_share(uint64_t deadline_ns, uint64_t now_ns,
+                            uint32_t left);
 
 /* Cierra sin perder el errno de quien llama. */
 void net_close(int fd);

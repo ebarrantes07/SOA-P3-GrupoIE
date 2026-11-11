@@ -4,6 +4,8 @@
  * un puerto fijo esté libre en la máquina de quien la corra. El puerto que
  * toca se consulta con net_listen y de ahí sale el que usa el que conecta.
  */
+#include <errno.h>
+
 #include "clock.h"
 #include "frame.h"
 #include "net.h"
@@ -159,6 +161,103 @@ static bool test_connect_refused(void) {
     return true;
 }
 
+/* net.h promete que en NET_ERROR el errno queda con el motivo, así que acá se
+ * fija ese contrato.
+ *
+ * LO QUE ESTA PRUEBA NO ATRAPA, dicho para que nadie lo suponga: el defecto
+ * que motivó el cambio era que el motivo se asignaba a errno dentro del ciclo
+ * y el socket() de la vuelta siguiente lo pisaba. Eso necesita que el nombre
+ * resuelva a DOS o más direcciones y que la primera falle. En la máquina donde
+ * se escribió esto, `localhost` resuelve solo a 127.0.0.1, y una dirección
+ * literal también da una sola, así que el camino de varias no se puede
+ * recorrer desde una prueba. Se verificó a mano que el código anterior pasaba
+ * esta prueba. El segundo bloque usa `localhost` igual, porque en una máquina
+ * que lo resuelva a ::1 y a 127.0.0.1 sí cubre el caso. */
+static bool test_error_keeps_errno(void) {
+    int lfd = -1, fd = -1;
+    uint16_t port = 0;
+
+    CHECK(net_listen(LOOPBACK, 0, 4, &lfd, &port) == NET_OK);
+    net_close(lfd);
+
+    errno = 0;
+    CHECK(net_connect(LOOPBACK, port, &fd, io_deadline_in(2000)) == NET_ERROR);
+    CHECK(errno == ECONNREFUSED);
+
+    /* Donde `localhost` dé ::1 y 127.0.0.1, las dos se intentan y el errno que
+     * queda tiene que ser el de la última, no un residuo de la primera. Si da
+     * una sola, esto repite el bloque de arriba y no cuesta nada. */
+    errno = 0;
+    if (net_connect("localhost", port, &fd, io_deadline_in(2000)) == NET_ERROR)
+        CHECK(errno == ECONNREFUSED);
+
+    return true;
+}
+
+/* El plazo es para la llamada completa, y se respeta aunque la dirección no
+ * responda nunca. 198.51.100.0/24 es TEST-NET-2 (RFC 5737): no está enrutado,
+ * así que el connect se queda esperando y la única forma de volver es el
+ * plazo. Esto NO prueba el reparto entre direcciones: una dirección literal
+ * resuelve a una sola, y acá `localhost` también. El reparto se prueba abajo,
+ * en la aritmética. */
+static bool test_connect_respects_deadline(void) {
+    int fd = -1;
+    uint64_t t0 = now_monotonic_ns();
+
+    CHECK(net_connect("198.51.100.1", 9, &fd, io_deadline_in(250)) == NET_TIMEOUT);
+    CHECK(fd == -1);
+
+    uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+    CHECK(ms >= 200u);
+    CHECK(ms < 2000u);
+    return true;
+}
+
+/* El reparto del plazo entre direcciones. Es la parte de net_connect que se
+ * puede probar sin depender de que un nombre resuelva a varias: en esta
+ * máquina `localhost` da una sola dirección, así que el camino de varias no
+ * se puede recorrer de verdad desde una prueba. */
+static bool test_deadline_share(void) {
+    const uint64_t MS = 1000000u;
+    uint64_t now = 5000u * MS;            /* un "ahora" cualquiera */
+    uint64_t dl  = now + 1000u * MS;      /* plazo a 1000 ms */
+
+    /* Sin plazo no hay nada que repartir. */
+    CHECK(net_deadline_share(0u, now, 4u) == 0u);
+
+    /* La última dirección se queda con todo lo que sobre. Sale de la división
+     * misma: lo que queda dividido por 1 y vuelto a sumar es el plazo. Por eso
+     * cambiar la salida temprana de `left <= 1` a `left == 0` no rompe nada;
+     * esa rama solo evita dividir por cero. */
+    CHECK(net_deadline_share(dl, now, 1u) == dl);
+
+    /* Dos direcciones: la primera recibe la mitad, y después de gastarla la
+     * segunda se queda con la otra mitad. Así una que no responde no se come
+     * el plazo de la que sigue. */
+    uint64_t primera = net_deadline_share(dl, now, 2u);
+    CHECK(primera == now + 500u * MS);
+    CHECK(net_deadline_share(dl, primera, 1u) == dl);
+
+    /* Tres: un tercio cada una, y lo que sobra por el redondeo queda para la
+     * última, que es la que recibe el plazo completo. */
+    CHECK(net_deadline_share(dl, now, 3u) == now + 333u * MS + 333333u);
+
+    /* Si la primera falla rápido, la siguiente hereda más plazo del que le
+     * tocaba al principio: el reparto se recalcula con lo que queda. */
+    uint64_t rapido = now + 10u * MS;
+    CHECK(net_deadline_share(dl, rapido, 2u) == rapido + 495u * MS);
+
+    /* Un plazo ya vencido se devuelve tal cual: io_wait lo reporta de
+     * inmediato en vez de esperar. */
+    CHECK(net_deadline_share(dl, dl, 3u) == dl);
+    CHECK(net_deadline_share(dl, dl + 1u, 3u) == dl);
+
+    /* `left == 0` no debería ocurrir; lo que importa es que no divida por
+     * cero. */
+    CHECK(net_deadline_share(dl, now, 0u) == dl);
+    return true;
+}
+
 static bool test_bad_address_is_rejected(void) {
     int fd = -1;
     uint16_t port = 0;
@@ -287,6 +386,9 @@ int main(void) {
         {"sockets_are_configured", test_sockets_are_configured},
         {"accept_respects_deadline", test_accept_respects_deadline},
         {"connect_refused", test_connect_refused},
+        {"error_keeps_errno", test_error_keeps_errno},
+        {"connect_respects_deadline", test_connect_respects_deadline},
+        {"deadline_share", test_deadline_share},
         {"bad_address_is_rejected", test_bad_address_is_rejected},
         {"peer_name", test_peer_name},
         {"fragmented_over_tcp", test_fragmented_over_tcp},

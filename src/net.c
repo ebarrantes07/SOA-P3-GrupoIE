@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "clock.h"
 #include "dsm.h"
 #include "io.h"
 
@@ -153,11 +154,39 @@ enum net_status net_accept(int listen_fd, int *out_fd, uint64_t deadline_ns) {
     }
 }
 
+uint64_t net_deadline_share(uint64_t deadline_ns, uint64_t now_ns,
+                            uint32_t left) {
+    uint64_t remaining;
+
+    /* Sin plazo no hay nada que repartir. */
+    if (deadline_ns == 0u)
+        return 0u;
+
+    /* Con una sola dirección restante la fórmula de abajo ya da exactamente
+     * `deadline_ns` (dividir lo que queda por 1 y volverlo a sumar), así que
+     * esta salida temprana no es la que hace que la última se quede con todo:
+     * lo único que agrega es no dividir por cero si `left` llegara en 0, que
+     * no debería pasar. Se escribe `<= 1` y no `== 0` para que el caso de la
+     * última dirección quede visible al leer. */
+    if (left <= 1u)
+        return deadline_ns;
+
+    /* Ya venció: se devuelve tal cual, e io_wait lo reporta de inmediato. */
+    if (now_ns >= deadline_ns)
+        return deadline_ns;
+
+    remaining = deadline_ns - now_ns;
+    return now_ns + remaining / left;
+}
+
 enum net_status net_connect(const char *host, uint16_t port, int *out_fd,
                             uint64_t deadline_ns) {
     struct addrinfo hints, *res = NULL, *it = NULL;
     char service[16];
-    enum net_status last = NET_ERROR;
+    bool tried = false;       /* se llegó a intentar alguna dirección */
+    bool timed_out = false;   /* alguna agotó su parte del plazo */
+    int saved_errno = 0;      /* motivo del último fallo: net.h lo promete */
+    uint32_t left = 0;        /* direcciones que faltan, contando la actual */
 
     if (out_fd == NULL)
         return NET_ERROR;
@@ -171,18 +200,35 @@ enum net_status net_connect(const char *host, uint16_t port, int *out_fd,
     if (host == NULL || getaddrinfo(host, service, &hints, &res) != 0)
         return NET_ADDR;
 
-    for (it = res; it != NULL; it = it->ai_next) {
-        int fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
-        int err = 0;
-        socklen_t len = sizeof err;
+    for (it = res; it != NULL; it = it->ai_next)
+        left++;
 
-        if (fd < 0)
+    for (it = res; it != NULL; it = it->ai_next, left--) {
+        int fd, err = 0;
+        socklen_t len = sizeof err;
+        uint64_t sub = deadline_ns;
+
+        if (deadline_ns != 0u) {
+            uint64_t now = now_monotonic_ns();
+            if (now >= deadline_ns) {
+                timed_out = true;
+                break;   /* no queda plazo ni para esta ni para las que siguen */
+            }
+            sub = net_deadline_share(deadline_ns, now, left);
+        }
+
+        fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        if (fd < 0) {
+            saved_errno = errno;
             continue;
+        }
+        tried = true;
 
         /* No bloqueante ANTES de conectar: así connect retorna de inmediato
          * con EINPROGRESS y el plazo se puede respetar. Con un descriptor
          * bloqueante, connect esperaría el tiempo que el sistema decida. */
         if (!configure(fd)) {
+            saved_errno = errno;
             net_close(fd);
             continue;
         }
@@ -193,30 +239,36 @@ enum net_status net_connect(const char *host, uint16_t port, int *out_fd,
             return NET_OK;
         }
         if (errno != EINPROGRESS) {
+            saved_errno = errno;
             net_close(fd);
-            last = NET_ERROR;
             continue;
         }
 
         /* Un socket en curso de conexión se vuelve escribible cuando la
          * conexión termina, con éxito o con fallo; SO_ERROR dice cuál fue. */
-        switch (io_wait(fd, true, deadline_ns)) {
+        switch (io_wait(fd, true, sub)) {
         case IO_OK:
             break;
         case IO_TIMEOUT:
+            /* Se abandona ESTA dirección, no la función: puede quedar plazo
+             * para la siguiente. Si era la última, el estado final lo dice. */
+            timed_out = true;
+            saved_errno = ETIMEDOUT;
             net_close(fd);
-            freeaddrinfo(res);
-            return NET_TIMEOUT;
+            continue;
         default:
+            saved_errno = errno;
             net_close(fd);
-            last = NET_ERROR;
             continue;
         }
 
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) != 0 || err != 0) {
+            /* `err` es el motivo real del fallo de conexión; si getsockopt
+             * mismo falló, el motivo es su propio errno. Se guarda en vez de
+             * asignarse acá: el socket() de la vuelta siguiente pisaría
+             * errno antes de que esta función retorne. */
+            saved_errno = (err != 0) ? err : errno;
             net_close(fd);
-            errno = err;
-            last = NET_ERROR;
             continue;
         }
 
@@ -226,7 +278,15 @@ enum net_status net_connect(const char *host, uint16_t port, int *out_fd,
     }
 
     freeaddrinfo(res);
-    return last;
+
+    /* getaddrinfo dio una lista en la que ninguna dirección se pudo ni
+     * intentar: no hay errno del sistema que reportar, y el motivo es la
+     * dirección. */
+    if (!tried && !timed_out)
+        return NET_ADDR;
+
+    errno = saved_errno;
+    return timed_out ? NET_TIMEOUT : NET_ERROR;
 }
 
 bool net_peer_name(int fd, char *out, size_t cap) {

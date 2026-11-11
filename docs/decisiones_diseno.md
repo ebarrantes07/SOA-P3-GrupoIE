@@ -811,3 +811,81 @@ Las 62 pruebas de la suite pasan, y también con `DSM_IO_CHUNK_MAX` en 1, en 7 y
 round-trip de `test_frame` recorren el camino nuevo con la trama partida en pedazos de un byte, que
 es el caso que atraparía un error en el offset de la copia. El conteo de `send` se midió con el shim
 descrito arriba, antes y después.
+
+---
+
+## D23 — El plazo de `net_connect` es para la llamada completa y se reparte entre las direcciones
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#2](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/2)
+- **Quién decide:** Emmanuel, a partir de la revisión de Isaac en el PR #13
+
+### Contexto
+
+`net_connect` resuelve con `AF_UNSPEC`, así que un nombre puede dar varias direcciones —típicamente
+una IPv6 y una IPv4— y se prueban en orden. El plazo que recibe es absoluto, y se le pasaba entero a
+cada intento. La primera dirección que no respondiera agotaba el plazo completo y la función
+devolvía `NET_TIMEOUT` sin llegar a probar las siguientes.
+
+Por loopback no se nota, porque hay una sola dirección y responde al instante. En la corrida en dos
+equipos que pide el enunciado sí: un IPv6 configurado pero sin ruta se queda esperando hasta el
+plazo, y la IPv4 que sí funciona nunca se intenta.
+
+### Decisión
+
+El plazo es para la llamada completa y se reparte entre las direcciones que faltan por probar,
+recalculándolo en cada vuelta con lo que queda. La aritmética vive en `net_deadline_share`:
+
+- sin plazo (0) devuelve 0;
+- un plazo ya vencido se devuelve tal cual, para que `io_wait` lo reporte de inmediato;
+- si no, `ahora + (plazo − ahora) / faltantes`.
+
+Si una dirección agota su parte, se abandona **esa dirección** y se sigue con la siguiente. El
+estado final distingue los dos motivos: `NET_TIMEOUT` si alguna agotó su parte, `NET_ERROR` si todas
+fallaron antes de eso.
+
+Se corrigen dos cosas más de la misma función. La variable que acumulaba el estado de salida solo
+tomaba el valor `NET_ERROR`, así que se eliminó. Y el `errno` del último fallo se guarda en una
+variable y se restaura antes de retornar: `net.h` promete que en `NET_ERROR` el `errno` queda con el
+motivo, y asignarlo dentro del ciclo no lo cumplía, porque el `socket()` de la vuelta siguiente lo
+pisa.
+
+### Por qué repartir y no otra cosa
+
+La alternativa era dejarlo como estaba y documentarlo ("el plazo es para el primer intento"). Se
+descartó porque el enunciado pide la corrida en dos equipos, que es exactamente el escenario donde
+el orden de las direcciones decide si la conexión funciona, y porque un plazo que no significa lo
+mismo para la primera dirección que para las demás es difícil de usar bien desde afuera.
+
+Repartir en partes iguales y recalcular con lo que queda tiene una propiedad útil: si una dirección
+falla rápido, la siguiente hereda más plazo del que le tocaba al principio, y la última siempre
+recibe todo lo que sobre.
+
+### Cómo se validó, y qué quedó sin validar
+
+Esto hay que decirlo con precisión, porque las dos primeras pruebas que se escribieron **no
+servían**: el código anterior las pasaba igual, y se comprobó corriéndolas contra él.
+
+- `deadline_share` prueba la aritmética directamente, con un "ahora" fijo en vez del reloj: sin
+  plazo, una sola dirección, dos (mitad y mitad), tres (el redondeo queda para la última), una
+  primera que falla rápido y le deja más a la siguiente, un plazo vencido y `left` en 0. Quitando el
+  divisor correcto o la guarda del plazo vencido, la prueba falla.
+- `connect_respects_deadline` comprueba que el plazo se respeta contra una dirección de TEST-NET-2
+  (RFC 5737), que no está enrutada. Eso prueba el plazo, **no** el reparto.
+- `error_keeps_errno` fija el contrato de `errno`, pero **no** atrapa el defecto original: ese
+  necesita que el nombre resuelva a dos direcciones o más y que la primera falle. En la máquina
+  donde se desarrolló, `localhost` resuelve solo a `127.0.0.1`. La prueba deja el caso escrito con
+  `localhost` para que cubra de verdad en una máquina que lo resuelva a `::1` y `127.0.0.1`.
+
+O sea: el reparto está probado en su aritmética y el camino de varias direcciones no se recorre en
+esta máquina. Por eso la aritmética se sacó a una función propia en vez de quedar embebida en el
+ciclo — es la única parte que se puede fijar con una prueba.
+
+### Un detalle para no confundir al que lea el código
+
+La salida temprana `if (left <= 1u) return deadline_ns;` **no** es lo que hace que la última
+dirección se quede con todo: con `left == 1` la división general ya da exactamente el plazo. Lo
+único que agrega esa rama es no dividir por cero si `left` llegara en 0. Se escribió `<= 1` en vez
+de `== 0` para que el caso de la última dirección quede visible al leer, y está anotado en los tres
+lugares porque un mutante que cambie `<= 1` por `== 0` no hace fallar ninguna prueba, y eso podría
+leerse como que la rama no sirve.
