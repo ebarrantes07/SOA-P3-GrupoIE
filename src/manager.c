@@ -447,9 +447,19 @@ static enum mgr_action on_hello(mgr *m, int ci, const struct wire_header *h,
 }
 
 /* Traduce un dir_status a la respuesta del coordinador. DIR_DUPLICATE no es
- * un error del protocolo: se registra y se descarta (D2.1). */
+ * un error del protocolo: se registra y se descarta (D2.1).
+ *
+ * `opened` dice si fue ESTA trama la que abrió el reloj de espera del nodo
+ * (lo devuelve sess_op_begin). Hace falta porque el reloj se abre antes de
+ * consultar al directorio —y no puede ser después: una concesión inmediata
+ * lo cierra desde dentro de dir_acquire, así que abrirlo al volver dejaría
+ * abierta una espera ya respondida—. Si el directorio rechaza, hay que
+ * deshacer exactamente eso: sin el cierre, mgr_check_timeouts abortaría la
+ * sesión por una espera que no existe, y el registro culparía a un plazo
+ * vencido en lugar de a este rechazo. */
 static enum mgr_action from_dir(mgr *m, int ci, const struct wire_header *h,
-                                enum dir_status ds, enum log_event ev) {
+                                enum dir_status ds, enum log_event ev,
+                                bool opened) {
     if (ds == DIR_OK)
         return m->failed ? MGR_ABORT : MGR_KEEP;
     if (ds == DIR_DUPLICATE) {
@@ -457,6 +467,8 @@ static enum mgr_action from_dir(mgr *m, int ci, const struct wire_header *h,
                 (enum dsm_mode)LOG_NO_MODE, DSM_OK, LOG_NO_DURATION);
         return MGR_KEEP;
     }
+    if (opened)
+        sess_op_end(m->s, (uint32_t)m->slot[ci].node);
     enum dsm_status st = (ds == DIR_EINVAL) ? DSM_EINVAL : DSM_ESTATE;
     return reject(m, ci, h, st, LOG_ERROR);
 }
@@ -504,10 +516,10 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
                 mode, DSM_OK, LOG_NO_DURATION);
         /* El cronómetro arranca con la solicitud, así que la duración que
          * sale en la concesión es lo que el nodo esperó de verdad. */
-        sess_op_begin(m->s, (uint32_t)node, now_ns);
+        bool opened = sess_op_begin(m->s, (uint32_t)node, now_ns);
         enum dir_status ds = dir_acquire(m->d, (uint32_t)node, h->page_id,
                                          mode, h->request_id, cached);
-        return from_dir(m, ci, h, ds, LOG_ACQ_REQ);
+        return from_dir(m, ci, h, ds, LOG_ACQ_REQ, opened);
     }
     case DSM_WIRE_INVALIDATE_ACK: {
         log_row(m, LOG_INVALIDATE_ACK, (uint32_t)node, h->request_id,
@@ -516,42 +528,45 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
         enum dir_status ds = dir_invalidate_ack(m->d, (uint32_t)node,
                                                 h->page_id, h->aux,
                                                 h->request_id);
-        return from_dir(m, ci, h, ds, LOG_INVALIDATE_ACK);
+        return from_dir(m, ci, h, ds, LOG_INVALIDATE_ACK, false);
     }
     case DSM_WIRE_REL_WRITE: {
         log_row(m, LOG_REL_WRITE, (uint32_t)node, h->request_id, h->page_id,
                 DSM_WRITE, DSM_OK, LOG_NO_DURATION);
-        sess_op_begin(m->s, (uint32_t)node, now_ns);
+        bool opened = sess_op_begin(m->s, (uint32_t)node, now_ns);
         /* La página llega COMPLETA: `conn` no entrega una trama a medias, así
          * que una transferencia incompleta nunca se publica. */
         enum dir_status ds = dir_release_write(m->d, (uint32_t)node,
                                                h->page_id, pl, h->request_id);
-        return from_dir(m, ci, h, ds, LOG_REL_WRITE);
+        return from_dir(m, ci, h, ds, LOG_REL_WRITE, opened);
     }
     case DSM_WIRE_REL_READ: {
         log_row(m, LOG_REL_READ, (uint32_t)node, h->request_id, h->page_id,
                 DSM_READ, DSM_OK, LOG_NO_DURATION);
-        sess_op_begin(m->s, (uint32_t)node, now_ns);
+        bool opened = sess_op_begin(m->s, (uint32_t)node, now_ns);
         enum dir_status ds = dir_release_read(m->d, (uint32_t)node,
                                               h->page_id, h->request_id);
-        return from_dir(m, ci, h, ds, LOG_REL_READ);
+        return from_dir(m, ci, h, ds, LOG_REL_READ, opened);
     }
     case DSM_WIRE_BARRIER_ARRIVE: {
         uint64_t gen = wire_get_u64(pl);
         log_row(m, LOG_BARRIER_ARRIVE, (uint32_t)node, LOG_NO_REQUEST,
                 LOG_NO_PAGE, (enum dsm_mode)LOG_NO_MODE, DSM_OK,
                 LOG_NO_DURATION);
-        /* Llegar a una barrera es esperar: si otro nodo no llega nunca, es
-         * ESTA espera la que vence y delata la pérdida. */
-        sess_op_begin(m->s, (uint32_t)node, now_ns);
-
         enum dsm_status why = DSM_OK;
         enum sess_barrier r = sess_barrier_arrive(m->s, (uint32_t)node,
                                                   h->aux, gen, &why);
         if (r == SESS_BARRIER_REJECT)
             return reject(m, ci, h, why, LOG_ERROR);
-        if (r == SESS_BARRIER_WAIT)
+
+        /* Llegar a una barrera es esperar: si otro nodo no llega nunca, es
+         * ESTA espera la que vence y delata la pérdida. Acá el reloj sí
+         * puede arrancar DESPUÉS de validar, porque sess_barrier_arrive no
+         * emite nada: una llegada rechazada no deja a nadie esperando. */
+        if (r == SESS_BARRIER_WAIT) {
+            sess_op_begin(m->s, (uint32_t)node, now_ns);
             return MGR_KEEP;
+        }
 
         /* Completa: la liberación va a TODOS, con la generación que acaba de
          * cerrarse (no la nueva, que ya avanzó en la sesión). */

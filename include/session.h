@@ -139,8 +139,18 @@ void sess_finish(sess *s);
 
 /* Marca el inicio de la operación en curso de `node`. Un nodo tiene a lo sumo
  * una operación a la vez (es un invariante del directorio), así que alcanza un
- * instante por nodo y no hace falta una tabla por (nodo, request_id). */
-void sess_op_begin(sess *s, uint32_t node, uint64_t now_ns);
+ * instante por nodo y no hace falta una tabla por (nodo, request_id).
+ *
+ * Devuelve true si este llamado abrió el reloj, y false si ya estaba abierto
+ * —en cuyo caso NO se le mueve el arranque—. Las dos cosas importan:
+ *
+ *  - No mover el arranque: una trama repetida, que el directorio descarta
+ *    como duplicada, no debe correr el plazo de la espera que sigue en pie.
+ *    Si lo corriera, un nodo que reenvía cada segundo nunca vencería.
+ *  - Devolverlo: quien rechaza la trama después de haber abierto el reloj
+ *    necesita saber si le toca cerrarlo, para deshacer lo que hizo esta
+ *    trama y nada más. */
+bool sess_op_begin(sess *s, uint32_t node, uint64_t now_ns);
 
 /* Nanosegundos desde sess_op_begin. LOG_NO_DURATION si no hay operación
  * marcada, para que la celda del CSV quede vacía en vez de decir 0 — que

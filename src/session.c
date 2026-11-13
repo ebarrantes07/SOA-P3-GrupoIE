@@ -176,11 +176,14 @@ void sess_finish(sess *s) {
 
 /* ---- Tiempo por nodo --------------------------------------------------- */
 
-void sess_op_begin(sess *s, uint32_t node, uint64_t now_ns) {
+bool sess_op_begin(sess *s, uint32_t node, uint64_t now_ns) {
     if (s == NULL || node >= s->nodes)
-        return;
+        return false;
+    if (s->op_open[node])
+        return false;   /* ya esperaba: el arranque es el de esa espera */
     s->op_open[node]  = true;
     s->op_start[node] = now_ns;
+    return true;
 }
 
 uint64_t sess_op_elapsed(const sess *s, uint32_t node, uint64_t now_ns) {

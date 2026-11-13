@@ -291,6 +291,145 @@ static bool test_page_out_of_session_range_is_rejected(void) {
     return true;
 }
 
+/* Un rechazo no deja al nodo con una espera abierta.
+ *
+ * El cronómetro de la operación tiene que arrancar ANTES de consultar al
+ * directorio —una concesión inmediata lo cierra desde dentro de dir_acquire—,
+ * así que una trama rechazada alcanza a abrirlo. Si no se deshace, el plazo
+ * de esa espera vence y aborta la sesión con ETIMEOUT: el registro culparía a
+ * un nodo lento por lo que fue un error de argumentos.
+ *
+ * Se cubren los cuatro sitios que abren el reloj: las tres tramas de
+ * directorio y la llegada a una barrera. */
+static bool test_rejection_leaves_no_pending_wait(void) {
+    mgr *m = mgr_create(2, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 2, 4));
+    struct salida s[8];
+    (void)drenar(m, 0, s, 8);
+    (void)drenar(m, 1, s, 8);
+
+    const uint64_t plazo = 1000;         /* ns */
+    const uint32_t fuera = 100;          /* página válida para el protocolo */
+    CHECK(fuera < DSM_MAX_PAGES);
+
+    uint8_t pl[8 + DSM_PAGE_SIZE];
+    memset(pl, 0, sizeof pl);
+
+    /* Punto de partida: con la sesión corriendo y nadie esperando, ningún
+     * plazo vence por más que avance el reloj. */
+    CHECK(!mgr_check_timeouts(m, 1000 + 1000 * plazo, plazo));
+
+    /* (a) ACQ_REQ rechazado. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header q = op(DSM_WIRE_ACQ_REQ, 0, fuera, 1, 8u);
+    q.aux = DSM_WIRE_MODE_READ;
+    CHECK(mgr_dispatch(m, 0, &q, pl, 1000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ERROR) != NULL);
+    CHECK(!mgr_check_timeouts(m, 1000 + 10 * plazo, plazo));
+
+    /* (b) REL_WRITE rechazado. */
+    struct wire_header rw = op(DSM_WIRE_REL_WRITE, 0, fuera, 2, DSM_PAGE_SIZE);
+    CHECK(mgr_dispatch(m, 0, &rw, pl, 2000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ERROR) != NULL);
+    CHECK(!mgr_check_timeouts(m, 2000 + 10 * plazo, plazo));
+
+    /* (c) REL_READ rechazado. */
+    struct wire_header rr = op(DSM_WIRE_REL_READ, 0, fuera, 3, 0u);
+    CHECK(mgr_dispatch(m, 0, &rr, NULL, 3000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ERROR) != NULL);
+    CHECK(!mgr_check_timeouts(m, 3000 + 10 * plazo, plazo));
+
+    /* (d) Llegada a una barrera rechazada por generación. */
+    uint8_t bp[8];
+    wire_put_u64(bp, 3u);
+    struct wire_header b = op(DSM_WIRE_BARRIER_ARRIVE, 0, DSM_NO_PAGE, 0u, 8u);
+    b.aux = 1u;
+    CHECK(mgr_dispatch(m, 0, &b, bp, 4000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ERROR) != NULL);
+    CHECK(!mgr_check_timeouts(m, 4000 + 10 * plazo, plazo));
+
+    /* Cuatro rechazos y la sesión sigue en pie. */
+    CHECK(sess_state_of(mgr_session(m)) == SESS_RUNNING);
+
+    /* El contraste, que es lo que le da valor a lo anterior: una espera REAL
+     * sí vence. Sin esta mitad la prueba pasaría igual con un coordinador que
+     * no midiera ningún plazo. El nodo 1 queda encolado detrás del escritor. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header w = op(DSM_WIRE_ACQ_REQ, 0, 1, 10, 8u);
+    w.aux = DSM_WIRE_MODE_WRITE;
+    CHECK(mgr_dispatch(m, 0, &w, pl, 5000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ACQ_GRANT) != NULL);
+
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header r2 = op(DSM_WIRE_ACQ_REQ, 1, 1, 11, 8u);
+    r2.aux = DSM_WIRE_MODE_READ;
+    CHECK(mgr_dispatch(m, 1, &r2, pl, 6000) == MGR_KEEP);
+    CHECK(drenar(m, 1, s, 8) == 0);                  /* esperando de verdad */
+
+    CHECK(!mgr_check_timeouts(m, 6000 + plazo / 2, plazo));
+    CHECK(mgr_check_timeouts(m, 6000 + plazo, plazo));
+    CHECK(sess_state_of(mgr_session(m)) == SESS_ABORTED);
+    mgr_destroy(m);
+    return true;
+}
+
+/* Rechazar un reenvío no borra la espera que ese nodo ya tenía en pie.
+ *
+ * Un ACQ_REQ reenviado no es un "duplicado" para el directorio: con una
+ * solicitud viva devuelve DIR_ESTATE y la trama se rechaza. Ese rechazo pasa
+ * por el mismo camino que cierra el cronómetro, y acá NO tiene que cerrarlo,
+ * porque la espera original sigue abierta y es la única señal que delata al
+ * nodo que no responde.
+ *
+ * Es el caso que justifica las dos mitades del arreglo: que sess_op_begin no
+ * pise un reloj abierto (y lo diga en el retorno), y que from_dir cierre solo
+ * lo que abrió esta trama. Si cualquiera de las dos faltara, el plazo o se
+ * correría a 2500 o desaparecería, y un nodo perdido que reintenta más seguido
+ * que el plazo no se detectaría nunca. */
+static bool test_resend_keeps_the_pending_wait(void) {
+    mgr *m = mgr_create(2, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 2, 4));
+    struct salida s[8];
+    (void)drenar(m, 0, s, 8);
+    (void)drenar(m, 1, s, 8);
+
+    const uint64_t plazo = 1000;
+    uint8_t pl[8 + DSM_PAGE_SIZE];
+    memset(pl, 0, sizeof pl);
+
+    /* El nodo 0 se queda con la escritura; el nodo 1 pide y queda encolado. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header w = op(DSM_WIRE_ACQ_REQ, 0, 1, 10, 8u);
+    w.aux = DSM_WIRE_MODE_WRITE;
+    CHECK(mgr_dispatch(m, 0, &w, pl, 1000) == MGR_KEEP);
+    (void)drenar(m, 0, s, 8);
+
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header r = op(DSM_WIRE_ACQ_REQ, 1, 1, 11, 8u);
+    r.aux = DSM_WIRE_MODE_READ;
+    CHECK(mgr_dispatch(m, 1, &r, pl, 2000) == MGR_KEEP);
+    CHECK(drenar(m, 1, s, 8) == 0);
+
+    /* Reenvía la MISMA solicitud a mitad de camino del plazo: se la rechazan
+     * por tener una solicitud viva, no se la conceden. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    CHECK(mgr_dispatch(m, 1, &r, pl, 2000 + plazo / 2) == MGR_KEEP);
+    size_t k = drenar(m, 1, s, 8);
+    CHECK(cuantas(s, k, DSM_WIRE_ACQ_GRANT) == 0);
+    const struct salida *e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL && e->h.aux == (uint32_t)DSM_ESTATE);
+
+    /* Y la espera original sobrevive al rechazo, contada desde la primera
+     * solicitud: vence a 2000 + plazo, no a 2500 + plazo ni nunca. */
+    CHECK(!mgr_check_timeouts(m, 2000 + plazo - 1, plazo));
+    CHECK(mgr_check_timeouts(m, 2000 + plazo, plazo));
+    CHECK(sess_state_of(mgr_session(m)) == SESS_ABORTED);
+    mgr_destroy(m);
+    return true;
+}
+
 /* Criterio de #4: con un escritor activo no se concede ningún otro acceso
  * hasta que libere. */
 static bool test_active_writer_blocks_everyone(void) {
@@ -782,6 +921,8 @@ int main(void) {
         {"operation_before_hello_is_rejected", test_operation_before_hello_is_rejected},
         {"node_cannot_impersonate_another", test_node_cannot_impersonate_another},
         {"page_out_of_session_range_is_rejected", test_page_out_of_session_range_is_rejected},
+        {"rejection_leaves_no_pending_wait", test_rejection_leaves_no_pending_wait},
+        {"resend_keeps_the_pending_wait", test_resend_keeps_the_pending_wait},
         {"active_writer_blocks_everyone", test_active_writer_blocks_everyone},
         {"read_is_granted_with_data", test_read_is_granted_with_data},
         {"write_round_trip_with_invalidation", test_write_round_trip_with_invalidation},
