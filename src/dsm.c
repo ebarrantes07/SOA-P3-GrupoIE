@@ -386,7 +386,14 @@ static void *receiver_main(void *arg) {
         pthread_mutex_unlock(&c->mu);
 
         if (h.type == DSM_WIRE_ERROR) {
-            struct row er = row_of(LOG_ERROR, LOG_NO_REQUEST, DSM_NO_PAGE);
+            /* Un rechazo repite el request_id y la página de la trama que
+             * rechaza (D3.7), así que la fila se empareja con la del
+             * coordinador por (node_id, request_id). Un ERROR que no responde
+             * a ninguna trama —aborto, plazo— trae request_id 0. */
+            struct row er = row_of(LOG_ERROR,
+                                   h.request_id != 0u ? h.request_id
+                                                      : LOG_NO_REQUEST,
+                                   h.page_id);
             er.status = st;
             log_put(c, &er);
             error_frame = true;

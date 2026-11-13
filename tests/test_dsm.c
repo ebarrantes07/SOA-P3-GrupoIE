@@ -1076,6 +1076,58 @@ static bool test_log_records_events_with_correlation(void) {
     return true;
 }
 
+static bool script_reject_acquire(struct fake *f) {
+    uint64_t req;
+    const char why[] = "ESTATE";
+
+    CHECK(fk_handshake(f, 2, 2));
+    CHECK(fk_acq(f, 1, DSM_WRITE, DSM_NO_VERSION, &req));
+    /* El rechazo repite request_id y página de lo rechazado (D3.7). */
+    CHECK(fk_send(f, DSM_WIRE_ERROR, 1, req, DSM_ESTATE, 0u, why,
+                  (uint32_t)strlen(why)));
+    return fk_eof(f);
+}
+
+/* La fila ERROR del trabajador lleva el request_id y la página que trae el
+ * rechazo, para emparejarla con la del coordinador. */
+static bool test_error_row_carries_the_rejected_request(void) {
+    char path[] = "/tmp/test_dsm_err_XXXXXX";
+    char line[512], *fl[32];
+    struct fake f;
+    dsm_ctx *c;
+    FILE *in;
+    bool found = false;
+    int fd = mkstemp(path);
+
+    CHECK(fd >= 0);
+    close(fd);
+    CHECK(fake_start(&f, script_reject_acquire));
+    c = app_init(&f, 2, 0, APP_TIMEOUT_MS, path, NULL);
+    CHECK(c != NULL);
+    CHECK(DSM_acquire(c, 1, DSM_WRITE) == NULL);
+    CHECK(DSM_last_error(c) == DSM_ESTATE);
+    CHECK(DSM_finalize(c) == -1);
+    CHECK(fake_join(&f));
+
+    in = fopen(path, "r");
+    CHECK(in != NULL);
+    while (fgets(line, sizeof line, in) != NULL) {
+        if (split_csv(line, fl, 32) != NCOLS || strcmp(fl[COL_EVENT], "ERROR") != 0)
+            continue;
+        /* La primera fila ERROR es la del rechazo; el request_id del primer
+         * acquire es 1, porque 0 queda para HELLO. */
+        CHECK(strcmp(fl[COL_REQ], "1") == 0);
+        CHECK(strcmp(fl[COL_PAGE], "1") == 0);
+        CHECK(strcmp(fl[COL_STATUS], "ESTATE") == 0);
+        found = true;
+        break;
+    }
+    (void)fclose(in);
+    (void)unlink(path);
+    CHECK(found);
+    return true;
+}
+
 int main(void) {
     static const struct test_case tests[] = {
         { "init_rejects_bad_args",                      test_init_rejects_bad_args },
@@ -1099,6 +1151,7 @@ int main(void) {
         { "abort_wakes_acquire",                        test_abort_wakes_acquire },
         { "acquire_times_out_and_drops_session",        test_acquire_times_out_and_drops_session },
         { "finalize_leaves_no_threads_or_fds",          test_finalize_leaves_no_threads_or_fds },
+        { "error_row_carries_the_rejected_request",     test_error_row_carries_the_rejected_request },
         { "log_records_events_with_correlation",        test_log_records_events_with_correlation },
     };
     return test_util_run(tests, sizeof tests / sizeof tests[0]) == 0 ? 0 : 1;
