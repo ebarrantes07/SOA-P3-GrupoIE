@@ -291,6 +291,74 @@ static bool test_page_out_of_session_range_is_rejected(void) {
     return true;
 }
 
+/* El ERROR de un rechazo dice a qué trama le dijo no.
+ *
+ * Un rechazo es una respuesta, así que lleva el request_id y la página de lo
+ * rechazado: con eso el registro del trabajador y el del coordinador se
+ * emparejan por (node_id, request_id) igual que el resto del protocolo. Sin
+ * eso, los dos registros solo se pueden cruzar adivinando por el orden.
+ *
+ * Los ERROR que no responden a ninguna trama —un aborto, un plazo vencido—
+ * se quedan sin esos campos, porque no hay nada a qué apuntar.
+ *
+ * Que drenar() vuelva a extraer el ERROR como trama es parte de la prueba:
+ * pasa por wire_check, que para ERROR exige page_id ausente o en rango. */
+static bool test_rejection_error_points_at_the_frame(void) {
+    mgr *m = mgr_create(2, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 2, 4));
+    struct salida s[8];
+    (void)drenar(m, 0, s, 8);
+    (void)drenar(m, 1, s, 8);
+
+    uint8_t pl[8 + DSM_PAGE_SIZE];
+    memset(pl, 0, sizeof pl);
+
+    /* Una trama con página: la mayor que el protocolo admite, que es el borde
+     * donde un ERROR mal armado dejaría de ser válido. */
+    const uint32_t borde = DSM_MAX_PAGES - 1u;
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header q = op(DSM_WIRE_ACQ_REQ, 0, borde, 4242, 8u);
+    q.aux = DSM_WIRE_MODE_READ;
+    CHECK(wire_check(&q) == WIRE_OK);
+    CHECK(mgr_dispatch(m, 0, &q, pl, 1000) == MGR_KEEP);
+
+    size_t k = drenar(m, 0, s, 8);
+    const struct salida *e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL);
+    CHECK(e->h.aux        == (uint32_t)DSM_EINVAL);
+    CHECK(e->h.request_id == 4242);
+    CHECK(e->h.page_id    == borde);
+
+    /* Una trama sin página: el ERROR repite el request_id y deja la página
+     * ausente, que es lo que traía la trama. */
+    uint8_t bp[8];
+    wire_put_u64(bp, 3u);                       /* generación inventada */
+    struct wire_header b = op(DSM_WIRE_BARRIER_ARRIVE, 0, DSM_NO_PAGE, 777,
+                              8u);
+    b.aux = 1u;
+    CHECK(mgr_dispatch(m, 0, &b, bp, 2000) == MGR_KEEP);
+    k = drenar(m, 0, s, 8);
+    e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL);
+    CHECK(e->h.aux        == (uint32_t)DSM_ESTATE);
+    CHECK(e->h.request_id == 777);
+    CHECK(e->h.page_id    == DSM_NO_PAGE);
+
+    /* Y el contraste: el ERROR de un aborto no responde a ninguna trama, así
+     * que no apunta a nada. Al perderse el nodo 0, el 1 recibe el aviso. */
+    mgr_drop_conn(m, 0, 3000);
+    CHECK(sess_state_of(mgr_session(m)) == SESS_ABORTED);
+    k = drenar(m, 1, s, 8);
+    e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL);
+    CHECK(e->h.aux        == (uint32_t)DSM_ECONN);
+    CHECK(e->h.request_id == 0);
+    CHECK(e->h.page_id    == DSM_NO_PAGE);
+    mgr_destroy(m);
+    return true;
+}
+
 /* Un rechazo no deja al nodo con una espera abierta.
  *
  * El cronómetro de la operación tiene que arrancar ANTES de consultar al
@@ -921,6 +989,7 @@ int main(void) {
         {"operation_before_hello_is_rejected", test_operation_before_hello_is_rejected},
         {"node_cannot_impersonate_another", test_node_cannot_impersonate_another},
         {"page_out_of_session_range_is_rejected", test_page_out_of_session_range_is_rejected},
+        {"rejection_error_points_at_the_frame", test_rejection_error_points_at_the_frame},
         {"rejection_leaves_no_pending_wait", test_rejection_leaves_no_pending_wait},
         {"resend_keeps_the_pending_wait", test_resend_keeps_the_pending_wait},
         {"active_writer_blocks_everyone", test_active_writer_blocks_everyone},

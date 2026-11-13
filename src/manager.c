@@ -264,8 +264,22 @@ int mgr_node_of_conn(const mgr *m, int ci) {
 /* ---- Errores y aborto -------------------------------------------------- */
 
 /* El detalle del ERROR es texto corto para que el registro del trabajador
- * diga algo legible; el código va en `aux`, que es lo que se interpreta. */
-static void queue_error(mgr *m, int ci, enum dsm_status st) {
+ * diga algo legible; el código va en `aux`, que es lo que se interpreta.
+ *
+ * `src` es la trama que se está rechazando, o NULL cuando el ERROR no
+ * responde a ninguna (plazo vencido, aborto, flujo ilegible). Si está, el
+ * ERROR repite su request_id y su page_id: un rechazo es una respuesta, y así
+ * el registro del trabajador y el del coordinador se emparejan por
+ * (node_id, request_id) igual que todo lo demás (D0.12). Sin eso, el único
+ * modo de saber a qué se le dijo no es adivinar por el orden.
+ *
+ * Que esos dos campos se puedan copiar depende de que `src` haya entrado por
+ * conn_next, que ya la validó con wire_check: ERROR admite page_id ausente o
+ * en rango, y una trama aceptada cumple una de las dos según su tipo. Copiar
+ * la cabecera de una trama NO validada podría producir un ERROR que
+ * conn_queue rechace. */
+static void queue_error(mgr *m, int ci, enum dsm_status st,
+                        const struct wire_header *src) {
     if (!slot_ok(m, ci) || !m->slot[ci].live)
         return;
     const char *txt = log_status_name(st);
@@ -276,7 +290,8 @@ static void queue_error(mgr *m, int ci, enum dsm_status st) {
     int node = m->slot[ci].node;
     struct wire_header h = base(DSM_WIRE_ERROR,
                                 node >= 0 ? (uint32_t)node : 0u,
-                                DSM_NO_PAGE, 0u, len);
+                                src != NULL ? src->page_id : DSM_NO_PAGE,
+                                src != NULL ? src->request_id : 0u, len);
     h.aux = (uint32_t)st;
     if (conn_queue(&m->slot[ci].c, &h, txt))
         log_count_sent(m->lg, h.type, h.length);
@@ -286,7 +301,10 @@ void mgr_send_error(mgr *m, int ci, enum dsm_status st, uint64_t now_ns) {
     if (!slot_ok(m, ci))
         return;
     m->now_ns = now_ns;
-    queue_error(m, ci, st);
+    /* Sin trama de origen a propósito: este camino lo usa el ciclo cuando el
+     * flujo dejó de ser legible, y la cabecera de una trama inválida no es
+     * algo que se pueda devolver. */
+    queue_error(m, ci, st, NULL);
     int node = m->slot[ci].node;
     log_row(m, LOG_ERROR, node >= 0 ? (uint32_t)node : LOG_NO_NODE,
             LOG_NO_REQUEST, LOG_NO_PAGE, (enum dsm_mode)LOG_NO_MODE, st,
@@ -307,7 +325,7 @@ void mgr_abort_session(mgr *m, enum dsm_status st, uint32_t except_node,
             continue;
         if ((uint32_t)node == except_node)
             continue;
-        queue_error(m, (int)i, st);
+        queue_error(m, (int)i, st, NULL);   /* no responde a ninguna trama */
     }
     sess_abort(m->s);
     log_row(m, LOG_SESSION_END, LOG_NO_NODE, LOG_NO_REQUEST, LOG_NO_PAGE,
@@ -408,7 +426,7 @@ static bool start_session(mgr *m) {
  * momento pero que no mata la sesión. */
 static enum mgr_action reject(mgr *m, int ci, const struct wire_header *h,
                              enum dsm_status st, enum log_event ev) {
-    queue_error(m, ci, st);
+    queue_error(m, ci, st, h);
     int node = m->slot[ci].node;
     log_row(m, ev, node >= 0 ? (uint32_t)node : LOG_NO_NODE,
             h->request_id, h->page_id, (enum dsm_mode)LOG_NO_MODE, st,
