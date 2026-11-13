@@ -240,6 +240,105 @@ static bool test_node_cannot_impersonate_another(void) {
     return true;
 }
 
+/* Criterio de #4: una página fuera de rango se rechaza "con error explícito y
+ * sin acceso fuera de límites".
+ *
+ * El rango que importa es el de la SESIÓN, no el del protocolo: wire_check
+ * solo acota contra DSM_MAX_PAGES (256), porque no conoce la configuración de
+ * esta corrida. Una página 100 en una sesión de 4 es una trama perfectamente
+ * válida que el coordinador tiene que rechazar igual. */
+static bool test_page_out_of_session_range_is_rejected(void) {
+    mgr *m = mgr_create(2, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 2, 4));
+    struct salida s[8];
+    (void)drenar(m, 0, s, 8);
+    (void)drenar(m, 1, s, 8);
+
+    uint8_t pl[8 + DSM_PAGE_SIZE];
+    memset(pl, 0, sizeof pl);
+
+    /* La página 100 existe para el protocolo y no para esta sesión. */
+    const uint32_t fuera = 100;
+    CHECK(fuera < DSM_MAX_PAGES);
+
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header q = op(DSM_WIRE_ACQ_REQ, 0, fuera, 1, 8u);
+    q.aux = DSM_WIRE_MODE_READ;
+    CHECK(wire_check(&q) == WIRE_OK);    /* la trama es válida */
+    CHECK(mgr_dispatch(m, 0, &q, pl, 1000) == MGR_KEEP);
+
+    size_t k = drenar(m, 0, s, 8);
+    CHECK(cuantas(s, k, DSM_WIRE_ACQ_GRANT) == 0);
+    const struct salida *e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL && e->h.aux == (uint32_t)DSM_EINVAL);
+
+    /* Lo mismo con los releases y la última página válida, que sí pasa. */
+    struct wire_header rw = op(DSM_WIRE_REL_WRITE, 0, fuera, 1,
+                               DSM_PAGE_SIZE);
+    CHECK(mgr_dispatch(m, 0, &rw, pl, 1100) == MGR_KEEP);
+    k = drenar(m, 0, s, 8);
+    e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL && e->h.aux == (uint32_t)DSM_EINVAL);
+
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header ok = op(DSM_WIRE_ACQ_REQ, 0, 3, 2, 8u);
+    ok.aux = DSM_WIRE_MODE_READ;
+    CHECK(mgr_dispatch(m, 0, &ok, pl, 1200) == MGR_KEEP);
+    k = drenar(m, 0, s, 8);
+    CHECK(buscar(s, k, DSM_WIRE_ACQ_GRANT) != NULL);
+    mgr_destroy(m);
+    return true;
+}
+
+/* Criterio de #4: con un escritor activo no se concede ningún otro acceso
+ * hasta que libere. */
+static bool test_active_writer_blocks_everyone(void) {
+    mgr *m = mgr_create(3, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 3, 4));
+    struct salida s[8];
+    for (int i = 0; i < 3; i++) (void)drenar(m, i, s, 8);
+
+    uint8_t pl[8 + DSM_PAGE_SIZE];
+    memset(pl, 0, sizeof pl);
+
+    /* n0 toma la escritura. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header w = op(DSM_WIRE_ACQ_REQ, 0, 1, 1, 8u);
+    w.aux = DSM_WIRE_MODE_WRITE;
+    CHECK(mgr_dispatch(m, 0, &w, pl, 1000) == MGR_KEEP);
+    CHECK(buscar(s, drenar(m, 0, s, 8), DSM_WIRE_ACQ_GRANT) != NULL);
+
+    /* n1 pide lectura y n2 escritura: ninguno recibe NADA, ni concesión ni
+     * error — quedan encolados, que es lo correcto. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header r1 = op(DSM_WIRE_ACQ_REQ, 1, 1, 1, 8u);
+    r1.aux = DSM_WIRE_MODE_READ;
+    CHECK(mgr_dispatch(m, 1, &r1, pl, 1100) == MGR_KEEP);
+    struct wire_header w2 = op(DSM_WIRE_ACQ_REQ, 2, 1, 1, 8u);
+    w2.aux = DSM_WIRE_MODE_WRITE;
+    CHECK(mgr_dispatch(m, 2, &w2, pl, 1200) == MGR_KEEP);
+
+    CHECK(drenar(m, 1, s, 8) == 0);
+    CHECK(drenar(m, 2, s, 8) == 0);
+    struct dir_page_info info;
+    CHECK(dir_page_info(mgr_directory(m), 1, &info));
+    CHECK(info.writer == 0 && info.readers == 0 && info.queued == 2);
+
+    /* Recién al liberar, se concede al siguiente de la cola. */
+    memset(pl, 0x5E, DSM_PAGE_SIZE);
+    struct wire_header rel = op(DSM_WIRE_REL_WRITE, 0, 1, 1, DSM_PAGE_SIZE);
+    CHECK(mgr_dispatch(m, 0, &rel, pl, 1300) == MGR_KEEP);
+
+    size_t k = drenar(m, 1, s, 8);
+    const struct salida *g = buscar(s, k, DSM_WIRE_ACQ_GRANT);
+    CHECK(g != NULL && g->h.aux == DSM_WIRE_MODE_READ);
+    CHECK(g->pl[8] == 0x5E);          /* ve lo que el escritor publicó */
+    mgr_destroy(m);
+    return true;
+}
+
 /* ---- Concesiones ------------------------------------------------------- */
 
 static bool test_read_is_granted_with_data(void) {
@@ -682,6 +781,8 @@ int main(void) {
         {"late_join_is_rejected_with_an_error", test_late_join_is_rejected_with_an_error},
         {"operation_before_hello_is_rejected", test_operation_before_hello_is_rejected},
         {"node_cannot_impersonate_another", test_node_cannot_impersonate_another},
+        {"page_out_of_session_range_is_rejected", test_page_out_of_session_range_is_rejected},
+        {"active_writer_blocks_everyone", test_active_writer_blocks_everyone},
         {"read_is_granted_with_data", test_read_is_granted_with_data},
         {"write_round_trip_with_invalidation", test_write_round_trip_with_invalidation},
         {"stale_ack_is_rejected", test_stale_ack_is_rejected},

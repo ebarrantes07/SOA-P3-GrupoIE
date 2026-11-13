@@ -39,8 +39,8 @@ struct coord {
 /* Arranca ./dsm_manager y lee el puerto que imprime. El pipe es lo que
  * sincroniza: la lectura se bloquea hasta que el socket está escuchando, así
  * que no hace falta esperar a ciegas. */
-static bool coord_start(struct coord *c, uint32_t nodes, uint32_t pages,
-                        uint32_t timeout_ms) {
+static bool coord_start_log(struct coord *c, uint32_t nodes, uint32_t pages,
+                            uint32_t timeout_ms, const char *log_path) {
     int pfd[2];
     if (pipe(pfd) != 0)
         return false;
@@ -67,9 +67,14 @@ static bool coord_start(struct coord *c, uint32_t nodes, uint32_t pages,
         /* setsid: el coordinador queda en su propio grupo, así una señal al
          * grupo de la suite no se lo lleva por delante antes de tiempo. */
         setsid();
-        execl("./dsm_manager", "dsm_manager", "--nodes", s_nodes,
-              "--pages", s_pages, "--port", "0",
-              "--timeout-ms", s_to, (char *)NULL);
+        if (log_path != NULL)
+            execl("./dsm_manager", "dsm_manager", "--nodes", s_nodes,
+                  "--pages", s_pages, "--port", "0",
+                  "--timeout-ms", s_to, "--log", log_path, (char *)NULL);
+        else
+            execl("./dsm_manager", "dsm_manager", "--nodes", s_nodes,
+                  "--pages", s_pages, "--port", "0",
+                  "--timeout-ms", s_to, (char *)NULL);
         _exit(127);
     }
 
@@ -95,6 +100,11 @@ static bool coord_start(struct coord *c, uint32_t nodes, uint32_t pages,
         return false;
     }
     return true;
+}
+
+static bool coord_start(struct coord *c, uint32_t nodes, uint32_t pages,
+                        uint32_t timeout_ms) {
+    return coord_start_log(c, nodes, pages, timeout_ms, NULL);
 }
 
 /* Espera a que termine, con un tope. Devuelve su código, o -1 si hubo que
@@ -451,6 +461,149 @@ static bool test_late_connection_gets_an_error(void) {
     return true;
 }
 
+/* Criterio de #4: "el log registra solicitud, concesión, invalidación, ACK,
+ * publicación, barrera liberada y error, con secuencia global creciente".
+ *
+ * test_log.c ya verifica el formato con filas sintéticas. Esto verifica que
+ * una corrida REAL las produzca: que los siete eventos aparezcan de verdad y
+ * que la secuencia no tenga huecos ni repeticiones a lo largo de toda la
+ * sesión. */
+static bool test_log_of_a_real_run(void) {
+    const char *ruta = "build/test_e2e_run.csv";
+    remove(ruta);
+
+    struct coord c;
+    CHECK(coord_start_log(&c, 2, 4, 5000, ruta));
+
+    struct wk w[2];
+    struct wire_header h;
+    static uint8_t pl[DSM_MAX_PAYLOAD];
+
+    for (uint32_t i = 0; i < 2; i++)
+        CHECK(wk_hello(&w[i], &c, i, 2));
+    for (uint32_t i = 0; i < 2; i++) {
+        CHECK(wk_recv(&w[i], &h, pl, 3000));
+        CHECK(h.type == DSM_WIRE_SESSION_START);
+    }
+
+    /* n1 lee y suelta: queda con copia retenida, que es lo que fuerza una
+     * invalidación cuando n0 escriba. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header r = mk(DSM_WIRE_ACQ_REQ, 1, 0, 1, 8);
+    r.aux = DSM_WIRE_MODE_READ;
+    CHECK(wk_send(&w[1], &r, pl));
+    CHECK(wk_recv(&w[1], &h, pl, 3000));
+    CHECK(h.type == DSM_WIRE_ACQ_GRANT);
+    struct wire_header rr = mk(DSM_WIRE_REL_READ, 1, 0, 1, 0);
+    CHECK(wk_send(&w[1], &rr, NULL));
+    CHECK(wk_recv(&w[1], &h, pl, 3000));
+
+    /* n0 escribe: invalidación, ACK (lo manda wk_recv solo), concesión. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header q = mk(DSM_WIRE_ACQ_REQ, 0, 0, 1, 8);
+    q.aux = DSM_WIRE_MODE_WRITE;
+    CHECK(wk_send(&w[0], &q, pl));
+    bool concedido = false;
+    for (int v = 0; v < 20 && !concedido; v++) {
+        for (uint32_t k = 0; k < 2; k++) {
+            struct frame_io fr = frame_recv(w[k].fd, &h, pl, DSM_MAX_PAYLOAD,
+                                            io_deadline_in(200));
+            if (!frame_ok(fr))
+                continue;
+            if (h.type == DSM_WIRE_INVALIDATE) {
+                struct wire_header a = mk(DSM_WIRE_INVALIDATE_ACK, k,
+                                          h.page_id, h.request_id, 0);
+                a.aux = h.aux;
+                CHECK(wk_send(&w[k], &a, NULL));
+            } else if (h.type == DSM_WIRE_ACQ_GRANT && k == 0) {
+                concedido = true;
+            }
+        }
+    }
+    CHECK(concedido);
+
+    static uint8_t pagina[DSM_PAGE_SIZE];
+    memset(pagina, 0x3C, sizeof pagina);
+    struct wire_header rw = mk(DSM_WIRE_REL_WRITE, 0, 0, 1, DSM_PAGE_SIZE);
+    CHECK(wk_send(&w[0], &rw, pagina));
+    CHECK(wk_recv(&w[0], &h, pl, 3000));
+    CHECK(h.type == DSM_WIRE_REL_WRITE_ACK);
+
+    /* Una barrera, para que quede su liberación. */
+    for (uint32_t i = 0; i < 2; i++) {
+        wire_put_u64(pl, 0u);
+        struct wire_header b = mk(DSM_WIRE_BARRIER_ARRIVE, i, DSM_NO_PAGE,
+                                  2, 8);
+        b.aux = 1u;
+        CHECK(wk_send(&w[i], &b, pl));
+    }
+    for (uint32_t i = 0; i < 2; i++) {
+        CHECK(wk_recv(&w[i], &h, pl, 3000));
+        CHECK(h.type == DSM_WIRE_BARRIER_RELEASE);
+    }
+
+    /* Y un error: una página que no existe en esta sesión. */
+    wire_put_u64(pl, DSM_NO_VERSION);
+    struct wire_header mala = mk(DSM_WIRE_ACQ_REQ, 0, 200, 3, 8);
+    mala.aux = DSM_WIRE_MODE_READ;
+    CHECK(wk_send(&w[0], &mala, pl));
+    CHECK(wk_recv(&w[0], &h, pl, 3000));
+    CHECK(h.type == DSM_WIRE_ERROR);
+
+    for (uint32_t i = 0; i < 2; i++) {
+        struct wire_header by = mk(DSM_WIRE_BYE, i, DSM_NO_PAGE, 0, 0);
+        CHECK(wk_send(&w[i], &by, NULL));
+        wk_close(&w[i]);
+    }
+    CHECK(coord_wait(&c, 3000) == 0);
+
+    /* Ahora se audita el archivo. */
+    FILE *f = fopen(ruta, "r");
+    CHECK(f != NULL);
+
+    char linea[1024];
+    CHECK(fgets(linea, sizeof linea, f) != NULL);
+    CHECK(strncmp(linea, "run_id,component,seq,", 21) == 0);
+
+    const char *obligatorios[] = {
+        "ACQ_REQ", "ACQ_GRANT", "INVALIDATE", "INVALIDATE_ACK",
+        "WRITE_PUBLISHED", "BARRIER_RELEASE", "ERROR",
+    };
+    bool visto[7] = {false};
+    unsigned long esperada = 1, filas = 0;
+    bool seq_ok = true;
+
+    while (fgets(linea, sizeof linea, f) != NULL) {
+        filas++;
+        /* La secuencia es la tercera columna y tiene que crecer de uno en
+         * uno, sin huecos ni repeticiones, a lo largo de TODA la sesión. */
+        char *c1 = strchr(linea, ',');
+        char *c2 = c1 ? strchr(c1 + 1, ',') : NULL;
+        char *c3 = c2 ? strchr(c2 + 1, ',') : NULL;
+        if (c2 == NULL || c3 == NULL) { seq_ok = false; break; }
+        if (strtoul(c2 + 1, NULL, 10) != esperada) { seq_ok = false; break; }
+        esperada++;
+
+        for (size_t i = 0; i < 7; i++) {
+            char patron[32];
+            snprintf(patron, sizeof patron, ",%s,", obligatorios[i]);
+            if (strstr(linea, patron) != NULL)
+                visto[i] = true;
+        }
+    }
+    fclose(f);
+
+    CHECK(seq_ok);
+    CHECK(filas > 10);
+    for (size_t i = 0; i < 7; i++) {
+        if (!visto[i])
+            fprintf(stderr, "  falta el evento %s en el registro\n",
+                    obligatorios[i]);
+        CHECK(visto[i]);
+    }
+    return true;
+}
+
 /* Argumentos: lo que no sirve se rechaza con un código distinto de 0 y sin
  * quedarse escuchando. */
 static bool test_bad_arguments_are_rejected(void) {
@@ -492,6 +645,7 @@ int main(void) {
         {"killed_worker_tells_the_rest", test_killed_worker_tells_the_rest},
         {"stuck_worker_hits_the_deadline", test_stuck_worker_hits_the_deadline},
         {"registration_has_a_deadline", test_registration_has_a_deadline},
+        {"log_of_a_real_run", test_log_of_a_real_run},
     };
     return test_util_run(tests, sizeof tests / sizeof tests[0]);
 }
