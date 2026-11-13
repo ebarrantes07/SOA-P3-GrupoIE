@@ -129,7 +129,12 @@ void mgr_send_error(mgr *m, int ci, enum dsm_status st, uint64_t now_ns);
 /* Le encola un ERROR a todos los nodos vivos menos `except_node`
  * (DSM_MAX_NODES para no excluir a nadie) y aborta la sesión. Es lo que hace
  * que "el resto de los nodos recibe error en lugar de esperar
- * indefinidamente". */
+ * indefinidamente".
+ *
+ * Idempotente: sobre una sesión ya abortada no hace nada. Quien llama no
+ * tiene que preguntar el estado antes, y una misma muerte no produce dos
+ * ERROR con causas distintas ni dos SESSION_END en el registro. La primera
+ * causa es la que queda, que es la que explica la muerte. */
 void mgr_abort_session(mgr *m, enum dsm_status st, uint32_t except_node,
                        uint64_t now_ns);
 

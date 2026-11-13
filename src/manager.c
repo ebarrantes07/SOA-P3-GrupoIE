@@ -315,6 +315,16 @@ void mgr_abort_session(mgr *m, enum dsm_status st, uint32_t except_node,
                        uint64_t now_ns) {
     if (m == NULL)
         return;
+
+    /* Una sesión se termina UNA sola vez. El ciclo puede llegar acá dos veces
+     * por la misma muerte: aborta por la acción MGR_ABORT y enseguida suelta
+     * la conexión del nodo, que al no haberse despedido vuelve a abortar con
+     * ECONN. Sin esta salida, cada nodo recibiría un segundo ERROR con otra
+     * causa y el registro tendría dos SESSION_END para una sola muerte: el
+     * verificador del #8 busca exactamente que la sesión termine una vez. */
+    if (sess_state_of(m->s) == SESS_ABORTED)
+        return;
+
     m->now_ns = now_ns;
 
     /* El ERROR se le encola a cada nodo vivo ANTES de marcar la sesión como

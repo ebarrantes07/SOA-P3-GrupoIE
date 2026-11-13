@@ -291,6 +291,48 @@ static bool test_page_out_of_session_range_is_rejected(void) {
     return true;
 }
 
+/* Abortar una sesión ya abortada no hace nada.
+ *
+ * El ciclo llega dos veces por la misma muerte: aborta por la acción
+ * MGR_ABORT y enseguida suelta la conexión del nodo, que al no haberse
+ * despedido vuelve a abortar con ECONN. El trabajador se queda con el primer
+ * ERROR, así que no se rompe nada visible, pero el registro quedaría con dos
+ * SESSION_END y dos causas para una sola muerte, y el verificador del #8
+ * busca que la sesión termine una vez. La primera causa es la que explica
+ * la muerte, así que es la que tiene que quedar. */
+static bool test_aborting_twice_changes_nothing(void) {
+    mgr *m = mgr_create(3, 4, 1, NULL);
+    CHECK(m != NULL);
+    CHECK(arrancar(m, 3, 4));
+    struct salida s[8];
+    for (int ci = 0; ci < 3; ci++)
+        (void)drenar(m, ci, s, 8);
+
+    /* Primer aborto: el nodo 0 queda excluido, los otros dos se enteran. */
+    mgr_abort_session(m, DSM_EABORT, 0u, 1000);
+    CHECK(sess_state_of(mgr_session(m)) == SESS_ABORTED);
+    CHECK(drenar(m, 0, s, 8) == 0);
+    size_t k = drenar(m, 1, s, 8);
+    const struct salida *e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL && e->h.aux == (uint32_t)DSM_EABORT);
+    k = drenar(m, 2, s, 8);
+    e = buscar(s, k, DSM_WIRE_ERROR);
+    CHECK(e != NULL && e->h.aux == (uint32_t)DSM_EABORT);
+
+    /* Segundo aborto con otra causa: no sale una sola trama más. */
+    mgr_abort_session(m, DSM_ETIMEOUT, DSM_MAX_NODES, 2000);
+    for (int ci = 0; ci < 3; ci++)
+        CHECK(drenar(m, ci, s, 8) == 0);
+
+    /* Y el camino real del ciclo: soltar la conexión de un nodo que no se
+     * despidió, justo después de abortar, tampoco manda un segundo ERROR. */
+    mgr_drop_conn(m, 0, 3000);
+    for (int ci = 0; ci < 3; ci++)
+        CHECK(drenar(m, ci, s, 8) == 0);
+    mgr_destroy(m);
+    return true;
+}
+
 /* El ERROR de un rechazo dice a qué trama le dijo no.
  *
  * Un rechazo es una respuesta, así que lleva el request_id y la página de lo
@@ -989,6 +1031,7 @@ int main(void) {
         {"operation_before_hello_is_rejected", test_operation_before_hello_is_rejected},
         {"node_cannot_impersonate_another", test_node_cannot_impersonate_another},
         {"page_out_of_session_range_is_rejected", test_page_out_of_session_range_is_rejected},
+        {"aborting_twice_changes_nothing", test_aborting_twice_changes_nothing},
         {"rejection_error_points_at_the_frame", test_rejection_error_points_at_the_frame},
         {"rejection_leaves_no_pending_wait", test_rejection_leaves_no_pending_wait},
         {"resend_keeps_the_pending_wait", test_resend_keeps_the_pending_wait},

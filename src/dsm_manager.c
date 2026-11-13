@@ -375,8 +375,7 @@ int main(int argc, char **argv) {
      * conexión". */
     if (pedido_de_salida) {
         uint64_t now = now_monotonic_ns();
-        if (sess_state_of(mgr_session(m)) != SESS_ABORTED)
-            mgr_abort_session(m, DSM_EABORT, DSM_MAX_NODES, now);
+        mgr_abort_session(m, DSM_EABORT, DSM_MAX_NODES, now);
         fprintf(stderr, "dsm_manager: señal recibida; se avisa y se cierra\n");
         salida = 1;
     }
