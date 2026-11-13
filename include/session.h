@@ -147,6 +147,20 @@ void sess_op_begin(sess *s, uint32_t node, uint64_t now_ns);
  * significaría "tardó nada", no "no se sabe". */
 uint64_t sess_op_elapsed(const sess *s, uint32_t node, uint64_t now_ns);
 
+/* Cierra el reloj de `node`: su operación recibió respuesta. Idempotente. */
+void sess_op_end(sess *s, uint32_t node);
+
+/* El nodo con la espera más antigua todavía abierta, y cuándo empezó. false
+ * si nadie está esperando.
+ *
+ * Es lo que el coordinador usa para los plazos. El reloj mide cuánto espera
+ * un nodo una RESPUESTA del coordinador, no cuánto tiene una página en la
+ * mano: lo segundo es trabajo de la aplicación y no tiene por qué acotarse.
+ * La distinción es la que hace que el plazo detecte lo que importa — si un
+ * nodo se muere teniendo una página, los demás se quedan esperando y SU
+ * espera es la que vence. */
+bool sess_op_oldest(const sess *s, uint32_t *out_node, uint64_t *out_start_ns);
+
 /* ---- Barreras ---------------------------------------------------------- */
 
 /* BARRIER_ARRIVE de `node` en `barrier_id`, declarando `generation`.

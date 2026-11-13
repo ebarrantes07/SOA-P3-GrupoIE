@@ -191,6 +191,35 @@ uint64_t sess_op_elapsed(const sess *s, uint32_t node, uint64_t now_ns) {
     return now_ns < s->op_start[node] ? 0u : now_ns - s->op_start[node];
 }
 
+void sess_op_end(sess *s, uint32_t node) {
+    if (s == NULL || node >= s->nodes)
+        return;
+    s->op_open[node] = false;
+}
+
+bool sess_op_oldest(const sess *s, uint32_t *out_node,
+                    uint64_t *out_start_ns) {
+    if (s == NULL)
+        return false;
+    bool hay = false;
+    uint32_t nodo = 0;
+    uint64_t min = 0;
+    for (uint32_t i = 0; i < s->nodes; i++) {
+        if (!s->op_open[i] || s->slot[i] != NODE_REGISTERED)
+            continue;
+        if (!hay || s->op_start[i] < min) {
+            hay = true;
+            min = s->op_start[i];
+            nodo = i;
+        }
+    }
+    if (hay) {
+        if (out_node != NULL)     *out_node = nodo;
+        if (out_start_ns != NULL) *out_start_ns = min;
+    }
+    return hay;
+}
+
 /* ---- Barreras ---------------------------------------------------------- */
 
 /* Casillero de `id`, o NULL si esa barrera no se usó nunca. No crea nada. */

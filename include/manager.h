@@ -133,4 +133,31 @@ void mgr_send_error(mgr *m, int ci, enum dsm_status st, uint64_t now_ns);
 void mgr_abort_session(mgr *m, enum dsm_status st, uint32_t except_node,
                        uint64_t now_ns);
 
+/* ---- Plazos ------------------------------------------------------------ */
+
+/* Marca que la sesión empezó a esperar trabajadores. Lo llama el ciclo con la
+ * primera conexión aceptada: antes de eso no hay nada que acotar, porque el
+ * coordinador se arranca a mano y puede estar un rato largo sin que nadie se
+ * conecte. */
+void mgr_registration_clock(mgr *m, uint64_t now_ns);
+
+/* Revisa si alguna espera venció y, si venció, aborta la sesión avisándole a
+ * todos. Devuelve true si abortó.
+ *
+ * Lo que se acota es cuánto espera un nodo una RESPUESTA (una concesión, una
+ * confirmación, una liberación de barrera), no cuánto tiempo tiene una página
+ * en la mano: eso último es trabajo de la aplicación. La distinción es lo que
+ * hace que el plazo detecte la pérdida de un nodo — si uno se cuelga teniendo
+ * una página, son las esperas de los OTROS las que vencen, y por eso el
+ * criterio de #4 se cumple avisándoles a ellos.
+ *
+ * Mientras la sesión se está registrando, lo que se acota es la espera por
+ * los N trabajadores desde mgr_registration_clock. */
+bool mgr_check_timeouts(mgr *m, uint64_t now_ns, uint64_t timeout_ns);
+
+/* Milisegundos que conviene pasarle a poll(): lo que falta para el plazo más
+ * próximo, o `timeout_ms` si nadie está esperando. Nunca 0 ni negativo, para
+ * que el ciclo no gire en vacío. */
+int mgr_poll_timeout_ms(const mgr *m, uint64_t now_ns, uint32_t timeout_ms);
+
 #endif /* SOA_P3_MANAGER_H */

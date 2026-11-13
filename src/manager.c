@@ -26,6 +26,8 @@ struct dsm_manager {
      * hay dos eventos en vuelo con un solo hilo (D0.1). */
     uint64_t now_ns;
     bool     failed;      /* una acción no se pudo encolar: abortar */
+
+    uint64_t reg_start_ns;  /* 0 hasta la primera conexión aceptada */
 };
 
 /* ---- Utilidades de trama ---------------------------------------------- */
@@ -104,6 +106,7 @@ static void on_action(void *user, const struct dir_action *a) {
         log_row(m, LOG_ACQ_GRANT, a->node, a->request_id, a->page_id,
                 a->mode, DSM_OK,
                 sess_op_elapsed(m->s, a->node, m->now_ns));
+        sess_op_end(m->s, a->node);   /* su espera terminó */
         break;
     }
     case DIR_ACT_INVALIDATE: {
@@ -124,6 +127,7 @@ static void on_action(void *user, const struct dir_action *a) {
         log_row(m, LOG_WRITE_PUBLISHED, a->node, a->request_id, a->page_id,
                 DSM_WRITE, DSM_OK,
                 sess_op_elapsed(m->s, a->node, m->now_ns));
+        sess_op_end(m->s, a->node);
         break;
     }
     case DIR_ACT_READ_RELEASED: {
@@ -133,6 +137,7 @@ static void on_action(void *user, const struct dir_action *a) {
         log_row(m, LOG_READ_RELEASED, a->node, a->request_id, a->page_id,
                 DSM_READ, DSM_OK,
                 sess_op_elapsed(m->s, a->node, m->now_ns));
+        sess_op_end(m->s, a->node);
         break;
     }
     }
@@ -309,6 +314,71 @@ void mgr_abort_session(mgr *m, enum dsm_status st, uint32_t except_node,
             (enum dsm_mode)LOG_NO_MODE, st, LOG_NO_DURATION);
 }
 
+/* ---- Plazos ------------------------------------------------------------ */
+
+void mgr_registration_clock(mgr *m, uint64_t now_ns) {
+    if (m == NULL || m->reg_start_ns != 0)
+        return;
+    m->reg_start_ns = now_ns;
+}
+
+/* La espera más próxima a vencer, o false si nadie espera. */
+static bool earliest_wait(const mgr *m, uint64_t *out_start) {
+    if (sess_state_of(m->s) == SESS_REGISTERING) {
+        if (m->reg_start_ns == 0)
+            return false;
+        *out_start = m->reg_start_ns;
+        return true;
+    }
+    if (sess_state_of(m->s) != SESS_RUNNING)
+        return false;
+    return sess_op_oldest(m->s, NULL, out_start);
+}
+
+bool mgr_check_timeouts(mgr *m, uint64_t now_ns, uint64_t timeout_ns) {
+    if (m == NULL || timeout_ns == 0)
+        return false;
+    if (sess_state_of(m->s) == SESS_ABORTED ||
+        sess_state_of(m->s) == SESS_FINISHED)
+        return false;
+
+    uint64_t start = 0;
+    if (!earliest_wait(m, &start))
+        return false;
+    if (now_ns < start || now_ns - start < timeout_ns)
+        return false;
+
+    /* Quien espera no es el culpable, pero igual recibe el error: el nodo que
+     * no responde puede ser cualquiera, y la política es abortar la sesión
+     * entera y que todos se enteren (D0.13). */
+    m->now_ns = now_ns;
+    log_row(m, LOG_TIMEOUT, LOG_NO_NODE, LOG_NO_REQUEST, LOG_NO_PAGE,
+            (enum dsm_mode)LOG_NO_MODE, DSM_ETIMEOUT, now_ns - start);
+    mgr_abort_session(m, DSM_ETIMEOUT, DSM_MAX_NODES, now_ns);
+    return true;
+}
+
+int mgr_poll_timeout_ms(const mgr *m, uint64_t now_ns, uint32_t timeout_ms) {
+    if (m == NULL || timeout_ms == 0)
+        return 1000;
+
+    uint64_t start = 0;
+    if (!earliest_wait(m, &start))
+        return (int)timeout_ms;
+
+    uint64_t limite = start + (uint64_t)timeout_ms * 1000000u;
+    if (now_ns >= limite)
+        return 1;              /* ya venció: despertar en seguida */
+    uint64_t falta_ms = (limite - now_ns) / 1000000u;
+    /* Nunca 0: con 0 el poll() no esperaría nada y el ciclo giraría en vacío
+     * quemando CPU hasta que el plazo venciera de verdad. */
+    if (falta_ms == 0)
+        return 1;
+    if (falta_ms > timeout_ms)
+        return (int)timeout_ms;
+    return (int)falta_ms;
+}
+
 /* ---- Despacho de tramas ------------------------------------------------ */
 
 /* Manda SESSION_START a todos: de ahí el trabajador toma la cantidad de
@@ -451,6 +521,7 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
     case DSM_WIRE_REL_WRITE: {
         log_row(m, LOG_REL_WRITE, (uint32_t)node, h->request_id, h->page_id,
                 DSM_WRITE, DSM_OK, LOG_NO_DURATION);
+        sess_op_begin(m->s, (uint32_t)node, now_ns);
         /* La página llega COMPLETA: `conn` no entrega una trama a medias, así
          * que una transferencia incompleta nunca se publica. */
         enum dir_status ds = dir_release_write(m->d, (uint32_t)node,
@@ -460,6 +531,7 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
     case DSM_WIRE_REL_READ: {
         log_row(m, LOG_REL_READ, (uint32_t)node, h->request_id, h->page_id,
                 DSM_READ, DSM_OK, LOG_NO_DURATION);
+        sess_op_begin(m->s, (uint32_t)node, now_ns);
         enum dir_status ds = dir_release_read(m->d, (uint32_t)node,
                                               h->page_id, h->request_id);
         return from_dir(m, ci, h, ds, LOG_REL_READ);
@@ -469,6 +541,9 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
         log_row(m, LOG_BARRIER_ARRIVE, (uint32_t)node, LOG_NO_REQUEST,
                 LOG_NO_PAGE, (enum dsm_mode)LOG_NO_MODE, DSM_OK,
                 LOG_NO_DURATION);
+        /* Llegar a una barrera es esperar: si otro nodo no llega nunca, es
+         * ESTA espera la que vence y delata la pérdida. */
+        sess_op_begin(m->s, (uint32_t)node, now_ns);
 
         enum dsm_status why = DSM_OK;
         enum sess_barrier r = sess_barrier_arrive(m->s, (uint32_t)node,
@@ -489,6 +564,8 @@ enum mgr_action mgr_dispatch(mgr *m, int ci, const struct wire_header *h,
             if (!send_to(m, n, &rh, out))
                 return MGR_ABORT;
         }
+        for (uint32_t n = 0; n < sess_nodes(m->s); n++)
+            sess_op_end(m->s, n);
         log_row(m, LOG_BARRIER_RELEASE, LOG_NO_NODE, LOG_NO_REQUEST,
                 LOG_NO_PAGE, (enum dsm_mode)LOG_NO_MODE, DSM_OK,
                 LOG_NO_DURATION);

@@ -1236,3 +1236,82 @@ llegaba mientras esperaba otra cosa, y la corrida se trababa — el otro nodo no
 nunca. No era un defecto del coordinador sino de la sonda, y es la demostración concreta de por qué
 el trabajador de verdad necesita un hilo receptor: un `INVALIDATE` puede llegar en cualquier
 momento y hay que confirmarlo igual. Vale anotarlo para #5.
+
+---
+
+## D3.5 — El plazo acota cuánto espera un nodo una respuesta, no cuánto trabaja
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide un plazo de operación de 10 segundos por omisión, y que al perderse un
+participante el resto reciba error en lugar de esperar indefinidamente. El criterio de #4 lo mide:
+*"matar un trabajador hace que el resto reciba error dentro del timeout configurado más 2 segundos
+de limpieza"*.
+
+La primera versión del ciclo acotaba otra cosa: que el `poll()` no se fuera en blanco durante un
+plazo entero. Eso no sirve con cuatro nodos, porque el tráfico de los que sí responden hace que el
+`poll()` devuelva actividad todo el tiempo y la espera vencida de otro nodo nunca se mire.
+
+### Decisión
+
+**Lo que se acota es cuánto espera un nodo una RESPUESTA del coordinador**, no cuánto tiempo tiene
+una página en la mano. El reloj de un nodo arranca con cada pedido que espera respuesta —`ACQ_REQ`,
+`REL_WRITE`, `REL_READ`, `BARRIER_ARRIVE`— y se cierra con la respuesta correspondiente.
+
+La distinción es lo que hace que el plazo detecte lo que importa. Si un nodo se cuelga teniendo una
+página, él no tiene ninguna espera abierta: son las esperas de **los otros** las que vencen, y por
+eso avisarles a ellos cumple el criterio. Y al revés, un nodo que hace cálculo largo con una página
+adquirida no muere por un plazo que no debería aplicarle: eso es trabajo de la aplicación, no una
+espera.
+
+Dos consecuencias en el ciclo:
+
+- **Los plazos se revisan en cada vuelta**, no solo cuando el `poll()` se va en blanco.
+- **El plazo del `poll()` es lo que falta para la espera más próxima a vencer**, no el plazo
+  completo. Si fuera el completo, una espera que arrancó a mitad de la vuelta anterior se
+  detectaría hasta un plazo entero tarde. Nunca se pasa 0, porque con 0 el ciclo giraría en vacío
+  quemando procesador hasta que el plazo venciera de verdad.
+
+### El registro también tiene su plazo
+
+Si los N no llegan nunca, el coordinador tampoco puede esperar para siempre. Ese reloj arranca con
+la **primera conexión aceptada**, no al arrancar el proceso: el coordinador se lanza a mano y puede
+estar un rato largo sin que nadie se conecte, y acotar eso sería acotar al operador.
+
+### Hay dos formas de perder un nodo, y una es gratis
+
+Vale separarlas porque se detectan distinto:
+
+- **Un nodo que desaparece** cierra su socket, y eso lo delata en el acto: `conn_recv` devuelve
+  `IO_CLOSED` en la misma vuelta del `poll()`. No hace falta esperar ningún plazo. Medido: **0 ms**.
+- **Un nodo vivo que deja de responder** no cierra nada. El socket sigue abierto y no hay señal
+  alguna; lo único que lo detecta es el plazo.
+
+El segundo es el caso difícil, y es el que justifica que el plazo exista.
+
+### Cómo se validó
+
+`tests/test_e2e_manager.c` levanta el binario real con `fork`/`exec` y lo somete a seis
+situaciones. El puerto se lee de un pipe, lo que además sincroniza: la lectura se bloquea hasta que
+el socket está escuchando, así que no hay ninguna espera a ciegas.
+
+Las seis: argumentos inválidos rechazados sin quedarse escuchando; el camino completo con dos
+trabajadores (registro, dos escrituras con invalidación entre medio, barrera, dos lecturas que ven
+la misma versión, despedidas) terminando con código 0; una incorporación tardía que recibe `ERROR`;
+un trabajador que desaparece; un trabajador vivo que no responde; y el registro que no se completa.
+
+Con un plazo configurado de 400 ms, medido tres veces:
+
+| situación | detectado a los |
+|---|---|
+| un nodo desaparece (socket cerrado) | **0 ms** |
+| un nodo vivo deja de responder | **400, 400, 401 ms** |
+| los N no llegan nunca | **400, 401, 402 ms** |
+
+El criterio concede el plazo más 2 segundos de limpieza; esto llega en el plazo más 2 milisegundos.
+Las pruebas verifican las dos direcciones: que el error **no** llegue antes del plazo —abortar
+temprano mataría una operación lenta pero legítima— y que no llegue mucho después.

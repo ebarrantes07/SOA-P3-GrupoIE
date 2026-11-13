@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
 
     int salida = 0;
-    uint64_t ultimo_avance = now_monotonic_ns();
+    const uint64_t timeout_ns = (uint64_t)o.timeout_ms * 1000000u;
 
     while (!pedido_de_salida) {
         struct pollfd fds[MGR_MAX_CONNS + 1];
@@ -238,7 +238,13 @@ int main(int argc, char **argv) {
         if (nf == 0)
             break;   /* ni escucha ni conexiones: nada que esperar */
 
-        int rc = poll(fds, (nfds_t)nf, (int)o.timeout_ms);
+        /* El plazo del poll() es lo que falta para la espera más próxima a
+         * vencer, no el plazo completo: si no, una espera que arrancó a
+         * mitad de la vuelta anterior se detectaría hasta un plazo entero
+         * tarde. */
+        int espera_ms = mgr_poll_timeout_ms(m, now_monotonic_ns(),
+                                            o.timeout_ms);
+        int rc = poll(fds, (nfds_t)nf, espera_ms);
         if (rc < 0) {
             if (errno == EINTR)
                 continue;
@@ -249,21 +255,17 @@ int main(int argc, char **argv) {
 
         uint64_t now = now_monotonic_ns();
 
-        if (rc == 0) {
-            /* Nada se movió en todo el plazo. Si la sesión está corriendo,
-             * eso es un nodo que no responde: se aborta y los demás reciben
-             * error en vez de esperar indefinidamente. */
-            uint64_t quieto_ms = (now - ultimo_avance) / 1000000u;
-            if (quieto_ms >= o.timeout_ms &&
-                sess_state_of(mgr_session(m)) != SESS_ABORTED) {
-                mgr_abort_session(m, DSM_ETIMEOUT, DSM_MAX_NODES, now);
-                salida = 1;
-            }
-            continue;
+        /* Se revisan los plazos SIEMPRE, no solo cuando el poll() se va en
+         * blanco: con cuatro nodos, el tráfico de los que sí responden hace
+         * que el poll() devuelva actividad constantemente, y una espera
+         * vencida de otro nodo nunca se vería. */
+        if (mgr_check_timeouts(m, now, timeout_ns)) {
+            fprintf(stderr, "dsm_manager: plazo de %u ms vencido; "
+                            "se aborta la sesión\n", o.timeout_ms);
+            salida = 1;
         }
-        ultimo_avance = now;
 
-        for (int i = 0; i < nf; i++) {
+        for (int i = 0; i < nf && rc > 0; i++) {
             if (fds[i].revents == 0)
                 continue;
 
@@ -271,8 +273,14 @@ int main(int argc, char **argv) {
                 int nfd = -1;
                 if (net_accept(lfd, &nfd, 0) != NET_OK)
                     continue;
-                if (mgr_accept_conn(m, nfd) < 0)
+                if (mgr_accept_conn(m, nfd) < 0) {
                     net_close(nfd);
+                    continue;
+                }
+                /* Desde acá se acota la espera por los N: antes no, porque el
+                 * coordinador se arranca a mano y puede estar un rato largo
+                 * sin que nadie se conecte. */
+                mgr_registration_clock(m, now);
                 continue;
             }
 
