@@ -1461,3 +1461,230 @@ procesos separados, exacto con N=1, 2 y 4 y K=1000, y los cuatro nodos más el c
 terminando con código 0. Los casos de caída —trabajador muerto, coordinador muerto, coordinador con
 `SIGTERM`, nodo vivo pero mudo— se detectan todos dentro del plazo configurado más el margen de
 limpieza.
+
+---
+
+## D4.1 — Dos hilos: el receptor es el único que lee y el único que cambia la caché
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#5](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/5)
+- **Quién decide:** Isaac
+
+### Contexto
+
+El enunciado exige que un trabajador reciba invalidaciones "aun cuando su aplicación esté
+esperando una barrera o una adquisición", y que una espera no bloquee la recepción de los mensajes
+necesarios para resolverla. Con un solo hilo, la aplicación bloqueada en `DSM_acquire` no podría
+confirmar la invalidación que el coordinador necesita para conceder; en el peor caso dos nodos se
+esperan mutuamente.
+
+### Decisión
+
+Cada contexto tiene un **hilo receptor**, único dueño del lado de lectura del socket. Lee sin
+plazo, aplica cada trama al estado y despierta al hilo de aplicación. Las invalidaciones las
+atiende y las confirma él solo.
+
+El hilo de aplicación **anota la respuesta que espera** (`struct wk_wait`: tipo, página,
+`request_id`, barrera, generación e instante de inicio) **antes** de enviar la solicitud, y
+después duerme en una variable de condición. Una trama que no coincide con lo anotado es
+`DSM_EPROTO`: el coordinador nunca manda respuestas que nadie pidió.
+
+**Todas las transiciones de la caché las hace el receptor**, en el orden del flujo TCP, y también
+escribe las filas de respuesta del registro. Así el CSV del trabajador queda en el orden en que el
+coordinador emitió las tramas. Los estados por página son los cinco del issue: sin copia, copia
+invalidada, copia retenida sin permiso, permiso READ y permiso WRITE. Solo la copia retenida se
+ofrece como `cached_version` en el `ACQ_REQ`, y todo `acquire` envía la solicitud igual.
+
+**Las reglas viven en `worker.c`, que no sabe de hilos ni de sockets.** Es la misma frontera que
+`manager.c` tiene en el coordinador (D3.4): `wk_apply` recibe una trama decodificada y dice qué le
+hace al estado, y `dsm.c` pone alrededor los hilos, los candados y la red. Así cada regla se
+prueba alimentando tramas a mano (`test_worker.c`), sin procesos ni esperas.
+
+### Por qué
+
+Que las transiciones las haga el receptor elimina una carrera que de otra forma habría que
+razonar: la aplicación todavía no despertó para anotar que su lectura terminó, y ya llegó la
+invalidación de esa página. Como el `REL_READ_ACK` precede al `INVALIDATE` en el flujo, cuando el
+receptor procesa el segundo la página ya está como copia retenida y se invalida bien.
+
+Anotar antes de enviar evita la carrera inversa: que la concesión llegue antes de que alguien la
+espere.
+
+Tres situaciones que el protocolo no permite se tratan como error de protocolo, terminal:
+
+- un `INVALIDATE` sobre un permiso activo, porque el coordinador solo invalida copias retenidas
+  (D2.1);
+- una concesión sin datos cuando la copia no existe o es de otra versión;
+- un `REL_WRITE_ACK` cuya versión no es la concedida más uno.
+
+Aceptar cualquiera de las tres significaría servir datos que no son los vigentes.
+
+---
+
+## D4.2 — Tres candados que nunca se anidan, y ninguno retenido mientras se espera a la red
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#5](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/5)
+- **Quién decide:** Isaac
+
+### Decisión
+
+- **`mu`** protege lo que comparten los dos hilos: la caché, la respuesta anotada y el error
+  terminal. Se toma por intervalos cortos de cómputo. El hilo de aplicación lo suelta al dormir en
+  `cv`, porque `pthread_cond_timedwait` lo libera atómicamente.
+- **`send_mu`** serializa los envíos, porque `frame_send` exige un solo emisor por descriptor
+  (D1.6). Se sostiene durante una sola trama, con plazo.
+- **`log_mu`** protege el CSV y los contadores de tráfico.
+
+Nunca se toman dos a la vez, y la variable de condición usa `CLOCK_MONOTONIC`, igual que los plazos
+del transporte (D1.1).
+
+### Por qué
+
+Es la regla del enunciado: ninguna espera retiene un bloqueo necesario para recibir la respuesta.
+
+- Mientras la aplicación espera una concesión no retiene **nada**, así que el receptor siempre
+  puede tomar `mu` para entregarla.
+- `send_mu` sí se retiene durante una escritura, que es una operación de red. Pero no es una espera
+  de respuesta: el receptor no lo necesita para leer, solo para enviar un `INVALIDATE_ACK` después
+  de haber leído. Y la escritura de la aplicación siempre progresa, porque el coordinador nunca se
+  bloquea enviando: tiene buffer de salida por conexión (D0.1), así que sigue leyendo.
+- Sin anidamiento no hay orden de candados que respetar ni interbloqueo posible entre ellos.
+
+---
+
+## D4.3 — El primer error de sesión gana, corta el socket y despierta a todos
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#5](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/5)
+- **Quién decide:** Isaac
+
+### Decisión
+
+`fail()` registra el **primer** error de sesión, que no se pisa después, despierta a quien espere
+y hace `shutdown(SHUT_RDWR)`. Lo llaman dos caminos:
+
+- el receptor, cuando el coordinador cierra, cuando llega una trama inválida o cuando llega un
+  `ERROR`, cuyo código se informa tal cual (D0.11);
+- el hilo de aplicación, cuando falla un envío o vence su plazo.
+
+**Todo `ERROR` es terminal para el trabajador**, también los rechazos que el coordinador atiende
+sin abortar (D3.7). La biblioteca rechaza localmente todo lo detectable antes de enviar, así que a
+un trabajador correcto solo le llega un `ERROR` por un defecto, y abortar es lo sano. Un `ERROR`
+que llega durante la despedida cuenta igual: `DSM_finalize` no informa un cierre limpio que no lo
+fue.
+
+El plazo de operación (`timeout_ms`, 10 s por omisión) acota cada espera del hilo de aplicación,
+incluidas las barreras. El receptor no tiene plazo: el coordinador puede estar callado
+legítimamente mientras la aplicación calcula.
+
+`DSM_release` deja la página como no adquirida **aunque falle**. Si no lo hiciera, tras un error
+terminal `DSM_finalize` respondería `DSM_ESTATE` para siempre y el contexto no se podría liberar.
+
+`DSM_finalize` despide en orden:
+
+1. envía `BYE`;
+2. cierra solo el lado de escritura;
+3. espera, hasta el plazo, a que el coordinador cierre (D0.13);
+4. corta el socket y hace `join` del receptor antes de liberar memoria.
+
+Si la sesión ya estaba en error, va directo al corte.
+
+### Por qué
+
+El `shutdown` es lo que convierte un error local en el aborto de la sesión que pide el enunciado:
+el coordinador ve la conexión caída y avisa a los demás, en vez de esperar a este nodo hasta su
+propio plazo. Además saca al receptor de su lectura sin plazo, que de otro modo solo terminaría
+cuando el coordinador cierre.
+
+Esperar el cierre del coordinador en vez de cortar de inmediato evita descartar lo que todavía
+esté en camino justo después del `BYE`.
+
+---
+
+## D4.4 — El trabajador escribe su CSV con el módulo del coordinador
+
+- **Fecha:** 2026-11-12, alineada el 2026-11-13 con el PR #14
+- **Issue:** [#5](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/5)
+- **Quién decide:** Isaac, sobre D3.1 de Emmanuel
+
+### Decisión
+
+`libdsm` no tiene formateador propio: escribe con `log.c` (D3.1), así que el trabajador y el
+coordinador producen **el mismo encabezado por construcción** y una sola herramienta lee los dos.
+`component` es `trabajador`, `run_id` es el que manda `SESSION_START` y `seq` es la secuencia local.
+La correlación con el coordinador es por `(node_id, request_id)` (D0.12), nunca por marcas de
+tiempo.
+
+Dos agregados mínimos a `log.c`, los dos compatibles con lo que ya escribía el coordinador:
+
+- **`has_version` y `version` en `struct log_row`.** El trabajador conoce la versión de su copia
+  pero no el escritor, los lectores ni las invalidaciones pendientes del directorio. Con `page` en
+  `NULL` y `has_version`, la columna `version` sale llena y las otras cuatro vacías. Un `false` por
+  omisión deja la celda vacía también con inicializadores designados, y si `page` no es `NULL`
+  manda `page`, así que las filas del coordinador no cambian.
+- **`log_count_recv` cuenta los `INVALIDATE`.** El coordinador nunca los recibe, así que su
+  columna `invals` no cambia, y la del trabajador cuenta las que atendió.
+
+`log.c` es de un solo hilo (D0.1). En el trabajador escriben los dos hilos, así que cada llamada va
+bajo `log_mu` (D4.2).
+
+Eventos que escribe el trabajador, con los nombres del coordinador: `SESSION_START`, `ACQ_REQ`
+(con la versión ofrecida), `ACQ_GRANT`, `REL_WRITE`, `WRITE_PUBLISHED`, `REL_READ`,
+`READ_RELEASED`, `INVALIDATE`, `INVALIDATE_ACK`, `BARRIER_ARRIVE`, `BARRIER_RELEASE`, `TIMEOUT`,
+`ERROR`, `NODE_LEAVE` (el `BYE`) y `SESSION_END`. `dur_ns` va en las filas de respuesta y mide desde
+que la aplicación anotó la espera hasta que llegó la respuesta.
+
+El registro se abre al recibir `SESSION_START`, porque cada fila lleva el `run_id`. Antes de
+conectar se prueba que la ruta se pueda escribir: descubrirlo después de registrarse abortaría la
+sesión de todos.
+
+### Por qué
+
+Con dos formateadores, el formato compartido dependería de que nadie toque uno sin el otro. Con
+uno, no hay forma de que diverjan, y `test_e2e_dsm` lo comprueba igual sobre una corrida real:
+mismo encabezado, mismo `run_id`, y cada solicitud, concesión y publicación del trabajador tiene
+su fila en el coordinador con el mismo `(node_id, request_id)`.
+
+Si el registro no se puede escribir a mitad de la corrida, `DSM_finalize` devuelve -1, porque
+`log.c` lo marca y `log_close` lo informa. No aborta la sesión: el error es local a este nodo.
+
+### Cómo se validó (D4.1 a D4.4)
+
+Tres archivos de prueba, 41 casos:
+
+- **`test_worker.c` (15).** Una prueba por regla de `wk_apply`, sin hilos ni sockets, y cada
+  rechazo comprueba que el estado quedó idéntico.
+- **`test_dsm.c` (22).** La API contra un coordinador falso, que es un hilo con un guion de tramas
+  exactas. El guion termina exigiendo `BYE` y fin de flujo, así que una trama de más hace fallar la
+  prueba; con eso, "se rechaza localmente, antes de enviar nada" se prueba por ausencia. Las dos
+  pruebas de invalidación son deterministas: el guion recibe el `ACQ_REQ` (o el `BARRIER_ARRIVE`),
+  manda el `INVALIDATE` y exige el ACK antes de conceder. Si el ACK llega, lo mandó el receptor,
+  porque la aplicación sigue bloqueada. También se cuentan hilos y descriptores en `/proc/self`
+  antes de `DSM_init` y después de `DSM_finalize`.
+- **`test_e2e_dsm.c` (4).** Procesos trabajadores contra el `dsm_manager` real:
+  - una invalidación confirmada con la aplicación en una barrera, y en el CSV del coordinador el
+    ACK antes de la concesión;
+  - `SIGKILL` al coordinador con dos nodos en barreras;
+  - `SIGKILL` a un trabajador que tiene la página que otro espera;
+  - la correspondencia fila a fila de los registros de los dos lados.
+
+La suite completa pasa sin límite de fragmentación, con `DSM_IO_CHUNK_MAX` en 1 y en 7, y bajo
+ASan/UBSan. Las tres pruebas nuevas pasan 15 veces seguidas, alternando fragmentos de 1 byte, sin
+dejar procesos vivos.
+
+Para comprobar que las pruebas detectan errores reales se inyectaron, uno a la vez, los diez bugs
+críticos del protocolo del trabajador, y todos hicieron fallar al menos una prueba:
+
+- no confirmar la invalidación, o confirmarla sin el solicitante;
+- ofrecer una copia invalidada;
+- aceptar una concesión sin copia;
+- aceptar una invalidación sobre un permiso activo;
+- aceptar una publicación con otra versión;
+- permitir una adquisición anidada;
+- liberar con otro `request_id`;
+- no cortar el socket ante un error;
+- ignorar un `ERROR` durante la despedida.
+
+TSan no corre bajo la emulación amd64 de la Mac ("unexpected memory mapping"); queda para correrlo
+en Linux nativo antes del merge.

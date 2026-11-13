@@ -73,6 +73,8 @@ struct log_row log_row_empty(enum log_event event) {
     r.page       = NULL;
     r.status     = DSM_OK;
     r.dur_ns     = LOG_NO_DURATION;
+    r.has_version = false;
+    r.version    = 0u;
     return r;
 }
 
@@ -162,6 +164,8 @@ void log_write(dsm_log *lg, const struct log_row *row) {
         snprintf(c_mask, sizeof c_mask, "0x%02X", (unsigned)p->readers);
         snprintf(c_pend, sizeof c_pend, "%lu",
                  (unsigned long)p->pending_acks);
+    } else if (row->has_version) {
+        snprintf(c_ver, sizeof c_ver, "%llu", (unsigned long long)row->version);
     }
 
     /* La secuencia la asigna ESTA función y nadie más: es lo que la vuelve
@@ -218,6 +222,10 @@ void log_count_recv(dsm_log *lg, uint8_t type, uint32_t payload_len) {
     lg->tr.bytes_in += (uint64_t)DSM_HEADER_SIZE + payload_len;
     if (carries_page(type, payload_len))
         lg->tr.page_xfers++;
+    /* El coordinador nunca recibe un INVALIDATE; el trabajador sí, y es la
+     * única forma de que su registro cuente las que atendió. */
+    if (type == DSM_WIRE_INVALIDATE)
+        lg->tr.invals++;
 }
 
 struct log_traffic log_traffic_now(const dsm_log *lg) {
