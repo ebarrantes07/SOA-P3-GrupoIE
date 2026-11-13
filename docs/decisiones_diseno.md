@@ -1293,6 +1293,32 @@ Vale separarlas porque se detectan distinto:
 
 El segundo es el caso difícil, y es el que justifica que el plazo exista.
 
+### El reloj se abre antes de validar, y se deshace si la trama se rechaza
+
+Parece al revés de lo razonable —primero validar, después cronometrar— pero no se puede, y el
+motivo es el orden en que ocurren las llamadas.
+
+El directorio no devuelve un resultado y después se le pregunta qué hacer: **emite sus acciones
+desde dentro de la llamada**, por el `callback`. Una solicitud que se concede en el acto se
+responde ahí mismo, y es en esa respuesta donde el reloj se cierra. Si el reloj se abriera al
+volver del `DIR_OK`, se abriría para una espera **que ya terminó**, y quedaría abierto para
+siempre: el nodo acumularía plazo por una operación que salió bien, lo cual es peor que el problema
+que se quería evitar.
+
+Así que se abre antes y se deshace al rechazar. Deshacerlo tiene que ser **exacto**: no "cerrar la
+espera de ese nodo", sino "cerrar la que abrió esta trama". La diferencia aparece con un reenvío:
+
+| | sin la distinción | con la distinción |
+|---|---|---|
+| el nodo reenvía su `ACQ_REQ` | el directorio lo rechaza (tiene una solicitud viva) y el rechazo **borra** la espera original | el rechazo no toca la espera original |
+| el nodo está perdido | su espera desapareció: **ningún plazo vence nunca** | la espera vence y lo delata |
+
+Un nodo que reenvía más seguido que el plazo quedaría invisible. De ahí que `sess_op_begin` no pise
+un reloj ya abierto y devuelva si fue *ese* llamado el que lo abrió.
+
+En la llegada a una barrera sí se valida primero, porque ahí la sesión no emite nada: el reloj
+arranca recién con la espera aceptada.
+
 ### Cómo se validó
 
 `tests/test_e2e_manager.c` levanta el binario real con `fork`/`exec` y lo somete a seis
@@ -1373,6 +1399,68 @@ dejarlo escrito porque, visto desde este issue, parecía duplicado.
 cada una de las dos señales, y verifica que con `SIGTERM` llegue primero el `ERROR` con `EABORT` y
 después el cierre, y que con `SIGKILL` llegue solo el cierre. En los dos casos, dentro del margen
 de limpieza y sin esperar ningún plazo.
+
+---
+
+## D3.7 — `ERROR` es terminal para el trabajador, aunque el coordinador siga atendiendo
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4), acordado en su revisión
+- **Quién decide:** Emmanuel e Isaac
+
+### Contexto
+
+Las dos mitades del sistema se escribieron en paralelo y le daban a `ERROR` un peso distinto.
+
+Del lado del coordinador, un rechazo devuelve `MGR_KEEP`: la conexión queda en pie y se sigue
+atendiendo. La idea era que rechazar una trama no tiene por qué matar una sesión sana.
+
+Del lado de `libdsm`, todo `ERROR` es terminal: corta y cierra, que es lo que `dsm.h` dice para los
+errores de sesión.
+
+Dos lecturas de la misma trama, y ninguna estaba escrita.
+
+### Decisión
+
+**`ERROR` es terminal para el trabajador.** La biblioteca rechaza localmente todo lo que puede
+detectar antes de enviar —página fuera de rango, modo inválido, adquisición anidada—, así que un
+`ERROR` que llega a un trabajador correcto solo puede venir de un defecto: del programa, de la
+biblioteca o del coordinador. Seguir operando sobre un estado que no se entiende es peor que morir,
+porque lo que se corrompe es la memoria compartida y el síntoma aparece lejos de la causa.
+
+**Del lado del coordinador no cambia nada, y eso es deliberado.** La consecuencia es que después de
+un rechazo esa conexión se cae por su cuenta y la sesión se aborta por `ECONN`, no por el rechazo.
+El `MGR_KEEP` igual hace falta, por dos razones:
+
+- **Es lo que garantiza que el `ERROR` salga.** Si el coordinador cerrara la conexión al rechazar,
+  el `ERROR` podría quedarse en el buffer de salida sin llegar nunca, y el trabajador vería un
+  cierre pelado —indistinguible de un coordinador muerto— en lugar de la causa.
+- **El par no siempre es `libdsm`.** Las sondas y el punta a punta hablan el protocolo a mano, y el
+  coordinador no tiene forma de saber quién está del otro lado. Rechazar sin matar es lo que le
+  permite atender a un par que decide no morirse.
+
+Dicho de otro modo: el coordinador no impone la política, la informa. Quien decide morir es el
+trabajador.
+
+### Lo que esto explica en el registro
+
+Una trama rechazada deja **dos** filas con causas distintas, y no es una inconsistencia:
+
+```
+ERROR        ... EINVAL     ← el rechazo, con el request_id de lo rechazado
+SESSION_END  ... ECONN      ← el trabajador cerró al recibirlo
+```
+
+La primera dice qué pasó; la segunda, cómo terminó. El verificador de #8 tiene que leerlas así y no
+como dos fallas.
+
+### Cómo se validó
+
+Isaac corrió su `libdsm` contra este coordinador durante la revisión del #4: un contador N×K con
+procesos separados, exacto con N=1, 2 y 4 y K=1000, y los cuatro nodos más el coordinador
+terminando con código 0. Los casos de caída —trabajador muerto, coordinador muerto, coordinador con
+`SIGTERM`, nodo vivo pero mudo— se detectan todos dentro del plazo configurado más el margen de
+limpieza.
 
 ---
 
@@ -1481,7 +1569,7 @@ y hace `shutdown(SHUT_RDWR)`. Lo llaman dos caminos:
 - el hilo de aplicación, cuando falla un envío o vence su plazo.
 
 **Todo `ERROR` es terminal para el trabajador**, también los rechazos que el coordinador atiende
-sin abortar (D3.4). La biblioteca rechaza localmente todo lo detectable antes de enviar, así que a
+sin abortar (D3.7). La biblioteca rechaza localmente todo lo detectable antes de enviar, así que a
 un trabajador correcto solo le llega un `ERROR` por un defecto, y abortar es lo sano. Un `ERROR`
 que llega durante la despedida cuenta igual: `DSM_finalize` no informa un cierre limpio que no lo
 fue.

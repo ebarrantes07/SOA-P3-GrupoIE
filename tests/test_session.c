@@ -504,19 +504,27 @@ static bool test_elapsed_is_absent_until_an_op_begins(void) {
 
     CHECK(sess_op_elapsed(s, 0, 1000) == LOG_NO_DURATION);
 
-    sess_op_begin(s, 0, 1000);
+    CHECK(sess_op_begin(s, 0, 1000));
     CHECK(sess_op_elapsed(s, 0, 1500) == 500);
     CHECK(sess_op_elapsed(s, 0, 1000) == 0);
 
     /* Cada nodo lleva el suyo. */
     CHECK(sess_op_elapsed(s, 1, 1500) == LOG_NO_DURATION);
-    sess_op_begin(s, 1, 1200);
+    CHECK(sess_op_begin(s, 1, 1200));
     CHECK(sess_op_elapsed(s, 1, 1500) == 300);
     CHECK(sess_op_elapsed(s, 0, 1500) == 500);
 
-    /* Una marca nueva reemplaza la anterior: un nodo tiene a lo sumo una
-     * operación en curso. */
-    sess_op_begin(s, 0, 2000);
+    /* Una marca sobre un reloj YA abierto no lo mueve, y lo dice en el
+     * retorno. Es lo que evita que una trama repetida corra el plazo de la
+     * espera que sigue en pie: a t=2000 el nodo 0 sigue esperando desde
+     * 1000, no desde 2000. */
+    CHECK(!sess_op_begin(s, 0, 2000));
+    CHECK(sess_op_elapsed(s, 0, 2000) == 1000);
+
+    /* Cerrado el reloj, una marca nueva sí arranca de cero: un nodo tiene a
+     * lo sumo una operación en curso, y esta es otra. */
+    sess_op_end(s, 0);
+    CHECK(sess_op_begin(s, 0, 2000));
     CHECK(sess_op_elapsed(s, 0, 2100) == 100);
 
     /* Un reloj que retrocediera daría 0, no un número enorme por desborde. */
@@ -525,8 +533,8 @@ static bool test_elapsed_is_absent_until_an_op_begins(void) {
     /* Nodo fuera de rango y NULL no revientan. */
     CHECK(sess_op_elapsed(s, 9, 1000) == LOG_NO_DURATION);
     CHECK(sess_op_elapsed(NULL, 0, 1000) == LOG_NO_DURATION);
-    sess_op_begin(NULL, 0, 1);
-    sess_op_begin(s, 9, 1);
+    CHECK(!sess_op_begin(NULL, 0, 1));
+    CHECK(!sess_op_begin(s, 9, 1));
 
     /* Al irse, deja de haber operación en curso. */
     CHECK(sess_bye(s, 0) == DSM_OK);
