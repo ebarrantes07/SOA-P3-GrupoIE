@@ -1135,3 +1135,104 @@ válido ya está ocupado, así que un `HELLO` tardío cae igual en "id repetido"
 además argumentos equivocados: con el chequeo es `ESTATE` ("llegaste tarde"), y sin él es `EINVAL`
 ("revisá tu configuración"), que manda al nodo a buscar un problema que no tiene. Se agregó ese
 caso, y con él el mutante cae.
+
+---
+
+## D3.4 — El coordinador es un traductor, y el ciclo `poll()` no sabe de protocolo
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+Con el directorio (D2.1), la sesión (D3.3), las conexiones (D3.2) y el registro (D3.1) ya hechos,
+falta lo que los une. La tentación es escribir un `main` grande con el `poll()` y el protocolo
+mezclados, y es lo que vuelve imposible probar el protocolo sin levantar procesos.
+
+### Decisión
+
+Dos archivos con una frontera estricta.
+
+`manager.c` traduce, y nada más:
+
+```
+trama recibida  ->  evento al directorio o a la sesión
+acción emitida  ->  trama encolada en la conexión del destinatario
+```
+
+No conoce descriptores: `mgr_dispatch` recibe una trama ya decodificada y `mgr_accept_conn`
+registra una conexión por su índice. **No hay una sola regla de coherencia en este archivo**; si
+hubiera una, estaría en el lugar equivocado.
+
+`dsm_manager.c` es el ciclo, y es delgado a propósito: analiza argumentos, escucha, y mueve bytes
+entre los sockets y los buffers de `conn`. Lo único que decide es cuándo atender a quién.
+
+El resultado es que el protocolo completo —registro, concesiones, invalidaciones, barreras,
+rechazos, pérdida de un nodo— se prueba alimentando tramas a mano, sin procesos y de forma
+determinista. Lo que queda del lado del socket es tan poco que su prueba natural es la de punta a
+punta.
+
+### Tres reglas que el coordinador agrega, y que nadie más podía agregar
+
+**Un nodo no puede operar en nombre de otro.** El `node_id` de la trama tiene que ser el del dueño
+de la conexión. El directorio solo ve el número que se le pasa, así que sin esta comprobación un
+nodo podría liberar la página de otro y el directorio le creería. Es el coordinador el único que
+sabe qué conexión es de quién.
+
+**Hay un casillero de conexión de más.** Se aceptan hasta `N+1` conexiones aunque la sesión sea de
+`N`. No es un descuido: el criterio de #4 pide que una incorporación tardía se rechace "con error
+explícito", y para contestarle un `ERROR` hay que haber aceptado su conexión. Sin el casillero
+extra, lo único posible sería cerrarle el socket en la cara.
+
+**Una acción que no se puede entregar aborta la sesión.** Si el directorio concede algo y la trama
+no entra en el buffer de salida de ese nodo, su estado ya cambió y el nodo nunca va a enterarse: no
+hay forma de seguir coherentes. Se marca y se aborta al volver del evento, no dentro del callback,
+porque el directorio prohíbe que se lo llame de vuelta desde ahí.
+
+### El registro muestra el antes y el después
+
+Una fila de trama recibida lleva el estado de la página tal como estaba cuando la trama llegó, y la
+fila de la acción que esa trama provoca lleva el estado resultante. Por eso la fila de un
+`INVALIDATE_ACK` todavía muestra la invalidación como pendiente: deja de estarlo en la fila
+siguiente. En la corrida de punta a punta se lee así:
+
+```
+seq  event             writer  readers_mask  inval_pending
+ 8   WRITE_PUBLISHED     -1       0x00            0
+ 9   INVALIDATE          -1       0x00            1
+11   INVALIDATE_ACK      -1       0x00            1     <- todavía pendiente
+12   ACQ_GRANT            0       0x00            0     <- concedido recién acá
+```
+
+Es a propósito: con las dos fotos, cada transición queda auditable sin tener que adivinar en qué
+momento se tomó.
+
+### Orden al perder un nodo
+
+Primero sale del directorio, después se aborta la sesión. `dir_node_leave` puede desbloquear
+concesiones y emitirlas, y si el aborto fuera primero, esas concesiones se encolarían detrás de un
+`ERROR` que ya cerró la sesión. Que la salida del nodo cierre la ronda que bloqueaba es lo que
+evita que un WRITE espere para siempre un ACK que no va a llegar (D0.13).
+
+### Cómo se validó
+
+17 casos en `tests/test_manager.c`, sin sockets: `SESSION_START` con la configuración que define el
+coordinador, id repetido que recibe `ERROR` sin quedarse con el casillero, incorporación tardía,
+operación antes del `HELLO`, un nodo firmando por otro, concesión de lectura con datos, el ciclo
+completo de una escritura con invalidación y ACK, un ACK rezagado que no concede nada, páginas
+independientes, barreras que liberan a todos, `BYE` ordenado, pérdida de un nodo que avisa al
+resto, y una sesión abortada que solo informa.
+
+Y una corrida de punta a punta con el binario real y dos trabajadores: registro, dos escrituras con
+invalidación entre medio, una barrera, dos lecturas y dos despedidas. El coordinador termina solo
+con código 0, y el registro queda con 27 filas coherentes (15 mensajes recibidos, 13 enviados, 6
+transferencias de página, 1 invalidación — los cuatro números verificados a mano contra la
+secuencia). La misma corrida con el coordinador compilado con ASan y UBSan, con detección de fugas
+activada, pasa sin reportes.
+
+**Lo que la sonda enseñó:** la primera versión del trabajador falso ignoraba un `INVALIDATE` si
+llegaba mientras esperaba otra cosa, y la corrida se trababa — el otro nodo no recibía su concesión
+nunca. No era un defecto del coordinador sino de la sonda, y es la demostración concreta de por qué
+el trabajador de verdad necesita un hilo receptor: un `INVALIDATE` puede llegar en cualquier
+momento y hay que confirmarlo igual. Vale anotarlo para #5.
