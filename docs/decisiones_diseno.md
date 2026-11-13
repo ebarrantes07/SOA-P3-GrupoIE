@@ -892,3 +892,572 @@ confiar en la versión declarada, no tratar la despedida como ACK, permitir `req
 repetidos, no verificar el `request_id` del release y, el que motivó la corrección, emparejar el
 ACK sin el solicitante: con solo la regla de `request_id` creciente,
 `stale_ack_other_requester_same_id` falla.
+
+---
+
+## D3.1 — El registro es un CSV de 20 columnas, y es un formateador sin reloj ni estado propio
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide un registro con cuatro grupos de campos —identificación, estado de la página,
+tráfico y tiempo— y una secuencia global creciente. D0.5 ya había decidido no reutilizar el
+`logger.c` del Proyecto 2, porque sus columnas son las del buffer acotado y recibe tipos de ese
+dominio; el esquema se define donde se usa, y el del coordinador es este issue.
+
+### Decisión
+
+Un CSV con estas 20 columnas, en este orden:
+
+```
+run_id, component, seq, node_id, request_id, page_id, event, status,   <- identificación
+mode, version, writer, readers, readers_mask, inval_pending,           <- estado
+msgs_in, msgs_out, bytes_in, bytes_out, page_xfers, invals,            <- tráfico
+dur_ns                                                                 <- tiempo
+```
+
+Cuatro propiedades fijan el diseño:
+
+**No lleva reloj.** La duración la calcula quien registra y llega en la fila ya hecha. El módulo
+no llama a `now_monotonic_ns` nunca. Es lo que vuelve sus pruebas deterministas: la misma
+secuencia de llamadas produce el mismo archivo byte por byte, así que se comparan archivos
+completos en vez de verificar rangos.
+
+**No duplica el estado.** Las cinco columnas de estado salen de un `struct dir_page_info`, la
+instantánea que el directorio ya produce (D2.1). No hay copia que mantener al día. Una copia
+podría desincronizarse del directorio, y entonces el registro mentiría justo cuando más importa,
+que es al auditar un invariante roto.
+
+**Lo ausente es celda vacía, no centinela.** Un `BARRIER_RELEASE` no tiene página y un
+`SESSION_START` no tiene nodo: esas celdas quedan vacías. No pueden quedar en 0 porque el nodo 0 y
+la página 0 son reales, y no se escribe `0xFFFFFFFF` porque los scripts de E8 leerían la columna
+como número y un promedio quedaría contaminado con 4294967295. Una celda vacía es un valor
+faltante en cualquier herramienta de análisis.
+
+**El tráfico lo cuenta el módulo, no quien registra.** `log_count_sent` y `log_count_recv` reciben
+el tipo de trama y la longitud de carga, y derivan solos los bytes totales, si llevaba página y si
+era una invalidación. Quien llama no recibe ningún contador, así que **no puede contar dos veces**:
+el criterio de #4 que pide que el tamaño de página se cuente una sola vez por transmisión queda
+satisfecho por la forma de la interfaz, no por disciplina al usarla. Se invocan desde el único
+lugar donde una trama cruza de verdad el socket.
+
+### Dos detalles que podrían parecer descuidos
+
+**`status` es columna propia, no va en `event`.** La primera versión escribía el estado de error en
+la columna de evento. Con dos columnas, una fila de error conserva **qué** se intentaba y **por
+qué** falló; con una sola se perdía lo primero.
+
+**El token del estado no es `DSM_strerror`.** Por dos razones. La práctica: `DSM_strerror` lo
+implementa `libdsm` (#5) y el coordinador no se enlaza contra la biblioteca del trabajador — al
+intentar usarlo, el enlazado falló. Y la de fondo: sirven a lectores distintos. `DSM_strerror` da
+una frase en español para que una aplicación la muestre; esta columna necesita un token corto,
+estable y sin comas que se pueda agrupar. Que las dos tablas no coincidan no es una
+inconsistencia: no describen lo mismo.
+
+### Cómo se validó
+
+13 casos en `tests/test_log.c`. Al no haber reloj, nueve comparan el archivo completo contra el
+texto esperado e informan la primera línea que difiere. Los otros cubren los rechazos de apertura
+(nombre con coma, salto de línea o comilla; nombre demasiado largo; ruta imposible), que un
+registro nulo acepte todas las llamadas sin hacer nada, que el nodo 0 salga como `0` y no como
+ausente, que la secuencia sea una sola para todos los nodos y páginas, y que los contadores de una
+fila sean los del momento de escribirla.
+
+Se inyectaron cuatro errores, uno a la vez, y cada uno hace fallar su prueba: contar como
+transferencia una concesión sin datos, contar el ACK de invalidación como otra invalidación, no
+incrementar la secuencia y olvidar la cabecera en el conteo de bytes.
+
+Un quinto —quitar el chequeo de tipo en la derivación de página— **no hacía fallar nada**, porque
+con tramas válidas es inalcanzable: solo `ACQ_GRANT` y `REL_WRITE` admiten carga de 4096 o más, y
+la mayor de las demás es `ERROR` con 256. Se agregó un caso que le pasa a propósito un tipo chico
+con longitud de página, porque estas funciones no validan tramas y el chequeo de tipo es lo único
+que las separa de contar una transferencia inventada. Con ese caso, el quinto mutante también cae.
+
+---
+
+## D3.2 — Cada conexión tiene dos buffers fijos, y la salida llena significa un nodo que no lee
+
+- **Fecha:** 2026-11-11
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El issue pide un buffer de entrada y otro de salida por conexión *"de modo que una escritura
+parcial no bloquee la recepción de nada"*. Con un solo hilo (D0.1), bloquearse en un nodo detiene
+a los otros tres, que es justo lo que el enunciado prohíbe.
+
+Ya existe `frame.h` (D1.5), pero no sirve acá: `frame_recv` lee hasta completar la trama y
+`frame_send` escribe hasta vaciarla. Las dos son correctas para el hilo receptor del trabajador,
+que no tiene nada mejor que hacer mientras espera.
+
+### Decisión
+
+El ciclo es el inverso al de `frame`: se leen los bytes que haya, se extraen las tramas
+**completas** que ya estén, y lo que quedó a medias espera en el buffer hasta la próxima vuelta del
+`poll()`. Igual del lado de la salida: se encolan tramas enteras y se escribe lo que el socket
+acepte.
+
+**El núcleo no toca sockets.** `conn_feed`, `conn_next`, `conn_queue` y `conn_take` son funciones
+puras sobre los dos buffers; el socket aparece solo en `conn_recv` y `conn_send`, que son un
+intento de `io_read_some`/`io_write_some` y nada más. Es lo que permite forzar de forma
+determinista los casos que en una red real aparecen por azar.
+
+**Una cabecera inválida no se consume.** Se reporta el motivo y los bytes se quedan donde están.
+Podría parecer que conviene saltarse los 32 bytes y resincronizar, pero si la cabecera es basura su
+`length` también lo es, así que no se sabe dónde empezaría la trama siguiente: no hay nada a qué
+resincronizar. El flujo murió y quien llama aborta esa sesión, que es lo mismo que ya decía D1.5.
+
+### El buffer de salida, y por qué puede fallar al encolar
+
+Lo que un nodo puede tener encolado está acotado por el protocolo: a lo sumo una concesión con
+página (4136 bytes), porque un nodo tiene a lo sumo un acceso en curso; a lo sumo N−1
+invalidaciones, porque cada ronda abierta corresponde a una solicitud WRITE en la cabeza de alguna
+página y cada una es de un nodo distinto (D2.1); y unas pocas confirmaciones. Menos de 5 KB.
+
+Pero esa cota vale para un nodo que se comporta. Uno que deje de leer su socket y siga enviando
+—por ejemplo, llegadas a barrera de varias generaciones sin esperar ninguna liberación— puede
+acumular salida sin tope. Por eso `conn_queue` puede devolver false, y cuando lo hace **no es un
+error del coordinador**: es un nodo que no respeta el protocolo, y se trata como una desconexión.
+
+Se descartó un buffer creciente: solo cambiaría el síntoma de "se llenó el buffer de un nodo" a
+"se agotó la memoria del coordinador", que es peor porque se lleva la sesión entera en vez de una
+conexión. La capacidad quedó en 16 KB, cómodamente por encima de los 5 KB del caso legítimo, para
+que llenarla signifique de verdad que el par dejó de leer y no que la cota estaba justa.
+
+### Cómo se validó
+
+13 casos, casi todos sin red: una trama partida en 4136 pedazos de un byte (ninguna trama hasta el
+último), dos tramas en una sola lectura, una entera más el principio de la siguiente, una cabecera
+inválida que no se consume, los bytes encolados comparados contra lo que serializa el emisor, el
+rechazo de una cabecera inválida sin tocar el buffer, la salida llena que rechaza sin truncar, y
+una escritura parcial reanudada en pedazos de 100, 1 y 500 bytes que reconstruye los bytes exactos.
+
+El último caso sí usa TCP: un hilo emisor con el límite de fragmentación en 1 byte manda tres
+tramas con página, para que lo anterior no quede verificado solo contra mi propio modelo de cómo
+llegan los bytes.
+
+Se inyectaron cinco errores. Cuatro caen de inmediato: consumir la cabecera inválida, entregar la
+trama sin esperar la carga completa, encolar sin validar y no avanzar la cabeza en `conn_take`.
+
+El quinto —no compactar nunca el buffer de entrada— **pasaba las 12 pruebas**. Los dos casos
+fáciles no lo ejercitan: si se consume todo, `conn_next` devuelve la cabeza a cero por su cuenta, y
+si el sobrante es chico lo que llega entra al final sin mover nada. Hace falta que la cabeza esté
+avanzada **y** que lo que llega no quepa al final aunque sí quepa en el total. Se agregó ese caso,
+construido con la aritmética exacta del buffer, y con él el mutante revienta con SEGV en vez de
+pasar.
+
+---
+
+## D3.3 — La sesión lleva nodos y barreras, sin conocer sockets ni páginas
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El coordinador tiene tres clases de estado: el de las páginas (el directorio, D2.1), el de los
+bytes en vuelo (las conexiones, D3.2) y el de los participantes — quién se registró, quién se fue,
+y en qué generación va cada barrera. Esto último es lo que falta.
+
+### Decisión
+
+Un módulo que habla solo de `node_id`. **No mapea nodos a conexiones**: qué descriptor le
+corresponde a cada uno lo sabe el coordinador. Si guardara descriptores, sus pruebas necesitarían
+sockets para nada, y los criterios de #4 sobre registro y barreras no se podrían verificar hasta
+que exista el ciclo `poll()`.
+
+Tampoco verifica si un nodo tiene páginas adquiridas: eso es estado del directorio y lo responde
+`dir_node_leave`. Ante un `BYE`, quien llama hace las dos comprobaciones (D0.13).
+
+### Barreras: tabla fija, y el casillero no se libera
+
+El `barrier_id` viene en `aux` y es un u32, así que no se puede indexar un arreglo con él. Hay una
+tabla de 16 casilleros, y cada uno recuerda la generación **abierta** de su barrera.
+
+El casillero **no se libera al liberarse la barrera**. Si se liberara, se perdería la generación, y
+la ronda siguiente llegaría con un número que no se podría validar contra nada — que es
+exactamente lo que D0.8 quiere detectar. Una barrera, una vez usada, se queda con su casillero.
+
+Al agotarse la tabla, una barrera nueva se rechaza con `DSM_EINVAL` en vez de desalojar a otra.
+Desalojar sería silencioso y volvería a perder la generación; rechazar se ve. Las cuatro
+aplicaciones del enunciado usan un puñado de barreras, pero el protocolo admite cualquier u32 y el
+coordinador no puede confiar en que el otro lado se porte.
+
+### Tres reglas que no estaban escritas en ningún lado
+
+**La primera generación de la vida de una barrera es la 0.** El trabajador manda cuántas veces *ya*
+pasó (D0.8), así que la primera vez son cero. Un casillero nuevo arranca con la 0 abierta, y una
+primera llegada con otro número se rechaza en vez de aceptarse como punto de partida: un nodo
+desincronizado se ve en su primera barrera, no ochenta generaciones después.
+
+**Un nodo espera en una sola barrera a la vez.** Después de llegar queda bloqueado hasta la
+liberación, así que una llegada a otra barrera solo puede venir de un trabajador desincronizado. Se
+rechaza para que se vea ahí, en vez de aparecer como una barrera que no libera nunca. Es el mismo
+invariante que el directorio tiene para los accesos.
+
+**Un `BYE` durante el registro aborta.** Irse antes de que estén los N deja a la sesión sin poder
+alcanzarlos nunca. Se aborta en el momento en vez de esperar al plazo, que solo podría decir "nadie
+llegó". Es la misma política del enunciado ante la pérdida de un participante que ya aplicaba D0.13
+para las barreras.
+
+### Dos cosas que salieron de que la prueba no coincidiera con el código
+
+**Un nodo esperando en dos barreras.** La prueba afirmaba que llegar a una segunda barrera se
+rechaza, y el módulo lo aceptaba. Ganó la prueba: era la regla correcta y faltaba implementarla.
+
+**Una llegada rechazada reservaba casillero.** Al arreglar lo anterior, la prueba siguió fallando
+por otro motivo: la reserva ocurría antes de validar, así que una llegada inválida consumía un
+casillero. Con 16 casilleros, un trabajador desincronizado podía agotar la tabla a fuerza de
+rechazos y dejar sin barreras a la sesión entera. Ahora se valida todo primero y se reserva solo al
+aceptar; una barrera que no existe tiene su generación abierta en 0 de forma implícita, que es lo
+que permite validar antes de crear.
+
+### Cómo se validó
+
+20 casos, todos sin red y sin directorio. Cubren los criterios de #4 sobre registro (N = 1, 2 y 4;
+ids fuera de orden; id repetido; incorporación tardía; lo que el trabajador declara, incluido el
+"sin opinión" de D0.7) y sobre barreras (liberación con todos, reutilización a lo largo de 50
+generaciones, una sola llegada por nodo y generación, generación adelantada y atrasada, tabla
+agotada, y que una rechazada no consuma casillero).
+
+Seis errores inyectados, cada uno hace fallar su prueba: contar la llegada duplicada, no validar la
+generación, no avanzarla al liberar, no abortar el `BYE` con una barrera esperando, reservar
+casillero antes de validar y aceptar una incorporación tardía.
+
+El último merece una nota, porque al principio **no fallaba**. Con los N registrados, todo id
+válido ya está ocupado, así que un `HELLO` tardío cae igual en "id repetido" y devuelve el mismo
+`DSM_ESTATE`. Lo único que distingue al chequeo es el **motivo** cuando el `HELLO` tardío trae
+además argumentos equivocados: con el chequeo es `ESTATE` ("llegaste tarde"), y sin él es `EINVAL`
+("revisá tu configuración"), que manda al nodo a buscar un problema que no tiene. Se agregó ese
+caso, y con él el mutante cae.
+
+---
+
+## D3.4 — El coordinador es un traductor, y el ciclo `poll()` no sabe de protocolo
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+Con el directorio (D2.1), la sesión (D3.3), las conexiones (D3.2) y el registro (D3.1) ya hechos,
+falta lo que los une. La tentación es escribir un `main` grande con el `poll()` y el protocolo
+mezclados, y es lo que vuelve imposible probar el protocolo sin levantar procesos.
+
+### Decisión
+
+Dos archivos con una frontera estricta.
+
+`manager.c` traduce, y nada más:
+
+```
+trama recibida  ->  evento al directorio o a la sesión
+acción emitida  ->  trama encolada en la conexión del destinatario
+```
+
+No conoce descriptores: `mgr_dispatch` recibe una trama ya decodificada y `mgr_accept_conn`
+registra una conexión por su índice. **No hay una sola regla de coherencia en este archivo**; si
+hubiera una, estaría en el lugar equivocado.
+
+`dsm_manager.c` es el ciclo, y es delgado a propósito: analiza argumentos, escucha, y mueve bytes
+entre los sockets y los buffers de `conn`. Lo único que decide es cuándo atender a quién.
+
+El resultado es que el protocolo completo —registro, concesiones, invalidaciones, barreras,
+rechazos, pérdida de un nodo— se prueba alimentando tramas a mano, sin procesos y de forma
+determinista. Lo que queda del lado del socket es tan poco que su prueba natural es la de punta a
+punta.
+
+### Tres reglas que el coordinador agrega, y que nadie más podía agregar
+
+**Un nodo no puede operar en nombre de otro.** El `node_id` de la trama tiene que ser el del dueño
+de la conexión. El directorio solo ve el número que se le pasa, así que sin esta comprobación un
+nodo podría liberar la página de otro y el directorio le creería. Es el coordinador el único que
+sabe qué conexión es de quién.
+
+**Hay un casillero de conexión de más.** Se aceptan hasta `N+1` conexiones aunque la sesión sea de
+`N`. No es un descuido: el criterio de #4 pide que una incorporación tardía se rechace "con error
+explícito", y para contestarle un `ERROR` hay que haber aceptado su conexión. Sin el casillero
+extra, lo único posible sería cerrarle el socket en la cara.
+
+**Una acción que no se puede entregar aborta la sesión.** Si el directorio concede algo y la trama
+no entra en el buffer de salida de ese nodo, su estado ya cambió y el nodo nunca va a enterarse: no
+hay forma de seguir coherentes. Se marca y se aborta al volver del evento, no dentro del callback,
+porque el directorio prohíbe que se lo llame de vuelta desde ahí.
+
+### El registro muestra el antes y el después
+
+Una fila de trama recibida lleva el estado de la página tal como estaba cuando la trama llegó, y la
+fila de la acción que esa trama provoca lleva el estado resultante. Por eso la fila de un
+`INVALIDATE_ACK` todavía muestra la invalidación como pendiente: deja de estarlo en la fila
+siguiente. En la corrida de punta a punta se lee así:
+
+```
+seq  event             writer  readers_mask  inval_pending
+ 8   WRITE_PUBLISHED     -1       0x00            0
+ 9   INVALIDATE          -1       0x00            1
+11   INVALIDATE_ACK      -1       0x00            1     <- todavía pendiente
+12   ACQ_GRANT            0       0x00            0     <- concedido recién acá
+```
+
+Es a propósito: con las dos fotos, cada transición queda auditable sin tener que adivinar en qué
+momento se tomó.
+
+### Orden al perder un nodo
+
+Primero sale del directorio, después se aborta la sesión. `dir_node_leave` puede desbloquear
+concesiones y emitirlas, y si el aborto fuera primero, esas concesiones se encolarían detrás de un
+`ERROR` que ya cerró la sesión. Que la salida del nodo cierre la ronda que bloqueaba es lo que
+evita que un WRITE espere para siempre un ACK que no va a llegar (D0.13).
+
+### Cómo se validó
+
+17 casos en `tests/test_manager.c`, sin sockets: `SESSION_START` con la configuración que define el
+coordinador, id repetido que recibe `ERROR` sin quedarse con el casillero, incorporación tardía,
+operación antes del `HELLO`, un nodo firmando por otro, concesión de lectura con datos, el ciclo
+completo de una escritura con invalidación y ACK, un ACK rezagado que no concede nada, páginas
+independientes, barreras que liberan a todos, `BYE` ordenado, pérdida de un nodo que avisa al
+resto, y una sesión abortada que solo informa.
+
+Y una corrida de punta a punta con el binario real y dos trabajadores: registro, dos escrituras con
+invalidación entre medio, una barrera, dos lecturas y dos despedidas. El coordinador termina solo
+con código 0, y el registro queda con 27 filas coherentes (15 mensajes recibidos, 13 enviados, 6
+transferencias de página, 1 invalidación — los cuatro números verificados a mano contra la
+secuencia). La misma corrida con el coordinador compilado con ASan y UBSan, con detección de fugas
+activada, pasa sin reportes.
+
+**Lo que la sonda enseñó:** la primera versión del trabajador falso ignoraba un `INVALIDATE` si
+llegaba mientras esperaba otra cosa, y la corrida se trababa — el otro nodo no recibía su concesión
+nunca. No era un defecto del coordinador sino de la sonda, y es la demostración concreta de por qué
+el trabajador de verdad necesita un hilo receptor: un `INVALIDATE` puede llegar en cualquier
+momento y hay que confirmarlo igual. Vale anotarlo para #5.
+
+---
+
+## D3.5 — El plazo acota cuánto espera un nodo una respuesta, no cuánto trabaja
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide un plazo de operación de 10 segundos por omisión, y que al perderse un
+participante el resto reciba error en lugar de esperar indefinidamente. El criterio de #4 lo mide:
+*"matar un trabajador hace que el resto reciba error dentro del timeout configurado más 2 segundos
+de limpieza"*.
+
+La primera versión del ciclo acotaba otra cosa: que el `poll()` no se fuera en blanco durante un
+plazo entero. Eso no sirve con cuatro nodos, porque el tráfico de los que sí responden hace que el
+`poll()` devuelva actividad todo el tiempo y la espera vencida de otro nodo nunca se mire.
+
+### Decisión
+
+**Lo que se acota es cuánto espera un nodo una RESPUESTA del coordinador**, no cuánto tiempo tiene
+una página en la mano. El reloj de un nodo arranca con cada pedido que espera respuesta —`ACQ_REQ`,
+`REL_WRITE`, `REL_READ`, `BARRIER_ARRIVE`— y se cierra con la respuesta correspondiente.
+
+La distinción es lo que hace que el plazo detecte lo que importa. Si un nodo se cuelga teniendo una
+página, él no tiene ninguna espera abierta: son las esperas de **los otros** las que vencen, y por
+eso avisarles a ellos cumple el criterio. Y al revés, un nodo que hace cálculo largo con una página
+adquirida no muere por un plazo que no debería aplicarle: eso es trabajo de la aplicación, no una
+espera.
+
+Dos consecuencias en el ciclo:
+
+- **Los plazos se revisan en cada vuelta**, no solo cuando el `poll()` se va en blanco.
+- **El plazo del `poll()` es lo que falta para la espera más próxima a vencer**, no el plazo
+  completo. Si fuera el completo, una espera que arrancó a mitad de la vuelta anterior se
+  detectaría hasta un plazo entero tarde. Nunca se pasa 0, porque con 0 el ciclo giraría en vacío
+  quemando procesador hasta que el plazo venciera de verdad.
+
+### El registro también tiene su plazo
+
+Si los N no llegan nunca, el coordinador tampoco puede esperar para siempre. Ese reloj arranca con
+la **primera conexión aceptada**, no al arrancar el proceso: el coordinador se lanza a mano y puede
+estar un rato largo sin que nadie se conecte, y acotar eso sería acotar al operador.
+
+### Hay dos formas de perder un nodo, y una es gratis
+
+Vale separarlas porque se detectan distinto:
+
+- **Un nodo que desaparece** cierra su socket, y eso lo delata en el acto: `conn_recv` devuelve
+  `IO_CLOSED` en la misma vuelta del `poll()`. No hace falta esperar ningún plazo. Medido: **0 ms**.
+- **Un nodo vivo que deja de responder** no cierra nada. El socket sigue abierto y no hay señal
+  alguna; lo único que lo detecta es el plazo.
+
+El segundo es el caso difícil, y es el que justifica que el plazo exista.
+
+### El reloj se abre antes de validar, y se deshace si la trama se rechaza
+
+Parece al revés de lo razonable —primero validar, después cronometrar— pero no se puede, y el
+motivo es el orden en que ocurren las llamadas.
+
+El directorio no devuelve un resultado y después se le pregunta qué hacer: **emite sus acciones
+desde dentro de la llamada**, por el `callback`. Una solicitud que se concede en el acto se
+responde ahí mismo, y es en esa respuesta donde el reloj se cierra. Si el reloj se abriera al
+volver del `DIR_OK`, se abriría para una espera **que ya terminó**, y quedaría abierto para
+siempre: el nodo acumularía plazo por una operación que salió bien, lo cual es peor que el problema
+que se quería evitar.
+
+Así que se abre antes y se deshace al rechazar. Deshacerlo tiene que ser **exacto**: no "cerrar la
+espera de ese nodo", sino "cerrar la que abrió esta trama". La diferencia aparece con un reenvío:
+
+| | sin la distinción | con la distinción |
+|---|---|---|
+| el nodo reenvía su `ACQ_REQ` | el directorio lo rechaza (tiene una solicitud viva) y el rechazo **borra** la espera original | el rechazo no toca la espera original |
+| el nodo está perdido | su espera desapareció: **ningún plazo vence nunca** | la espera vence y lo delata |
+
+Un nodo que reenvía más seguido que el plazo quedaría invisible. De ahí que `sess_op_begin` no pise
+un reloj ya abierto y devuelva si fue *ese* llamado el que lo abrió.
+
+En la llegada a una barrera sí se valida primero, porque ahí la sesión no emite nada: el reloj
+arranca recién con la espera aceptada.
+
+### Cómo se validó
+
+`tests/test_e2e_manager.c` levanta el binario real con `fork`/`exec` y lo somete a seis
+situaciones. El puerto se lee de un pipe, lo que además sincroniza: la lectura se bloquea hasta que
+el socket está escuchando, así que no hay ninguna espera a ciegas.
+
+Las seis: argumentos inválidos rechazados sin quedarse escuchando; el camino completo con dos
+trabajadores (registro, dos escrituras con invalidación entre medio, barrera, dos lecturas que ven
+la misma versión, despedidas) terminando con código 0; una incorporación tardía que recibe `ERROR`;
+un trabajador que desaparece; un trabajador vivo que no responde; y el registro que no se completa.
+
+Con un plazo configurado de 400 ms, medido tres veces:
+
+| situación | detectado a los |
+|---|---|
+| un nodo desaparece (socket cerrado) | **0 ms** |
+| un nodo vivo deja de responder | **400, 400, 401 ms** |
+| los N no llegan nunca | **400, 401, 402 ms** |
+
+El criterio concede el plazo más 2 segundos de limpieza; esto llega en el plazo más 2 milisegundos.
+Las pruebas verifican las dos direcciones: que el error **no** llegue antes del plazo —abortar
+temprano mataría una operación lenta pero legítima— y que no llegue mucho después.
+
+---
+
+## D3.6 — Si el que muere es el coordinador: con señal avisa, con `SIGKILL` no puede
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel, a partir de una pregunta de Emmanuel en la revisión
+
+### Contexto
+
+Todo lo anterior cubre que el coordinador sobreviva a la pérdida de un trabajador (D3.5). Faltaba
+el caso inverso, que nadie había planteado: qué ve un trabajador cuando desaparece el coordinador.
+
+Medido antes de decidir nada, con el binario real:
+
+| cómo muere el coordinador | qué ve el trabajador |
+|---|---|
+| `SIGKILL` | cierre del flujo, a los **0 ms** |
+| `SIGTERM` (antes de este cambio) | cierre del flujo, a los **0 ms** |
+
+Es decir: la detección ya era inmediata, pero los dos casos eran indistinguibles.
+
+### Decisión
+
+Se separan, porque no son lo mismo.
+
+**Con `SIGKILL` no hay nada que hacer**, y eso está bien: el proceso no ejecuta una instrucción
+más. El núcleo cierra sus sockets, el `FIN` llega, y cada trabajador ve el cierre en el acto. Esa
+es toda la garantía que se puede dar, y alcanza.
+
+**Con `SIGTERM` o `SIGINT` sí se puede avisar**, porque es un apagado deliberado. El coordinador le
+encola un `ERROR` con `DSM_EABORT` a cada nodo vivo, vacía las salidas con un tope de 500 ms, y
+recién entonces cierra. Antes salía callado.
+
+La diferencia importa para el registro del trabajador: con el aviso puede anotar "la sesión se
+abortó" en vez de "se cortó la conexión", y esas dos cosas se investigan distinto. Sin el aviso, un
+apagado ordenado del operador y un coordinador que revienta se ven exactamente igual.
+
+El vaciado es **un esfuerzo razonable, no una garantía**: si un par dejó de leer, su buffer no se
+va a drenar nunca y colgarse por él sería peor que irse. De ahí el tope.
+
+### Lo que esto NO cubre, y de quién es
+
+Si se cae la máquina del coordinador o se corta la red, no llega ni un `FIN`. El trabajador se
+queda esperando en su `recv` hasta que vence **su propio** plazo, el de `dsm_options.timeout_ms`.
+No hay nada que el coordinador pueda hacer: ya no existe.
+
+Eso confirma que el plazo del lado del trabajador no es redundante con el del coordinador. Son dos
+plazos distintos que protegen de cosas distintas, y le toca a #5 implementar el segundo. Vale
+dejarlo escrito porque, visto desde este issue, parecía duplicado.
+
+### Cómo se validó
+
+`test_coordinator_death` en el punta a punta: registra dos trabajadores, mata al coordinador con
+cada una de las dos señales, y verifica que con `SIGTERM` llegue primero el `ERROR` con `EABORT` y
+después el cierre, y que con `SIGKILL` llegue solo el cierre. En los dos casos, dentro del margen
+de limpieza y sin esperar ningún plazo.
+
+---
+
+## D3.7 — `ERROR` es terminal para el trabajador, aunque el coordinador siga atendiendo
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4), acordado en su revisión
+- **Quién decide:** Emmanuel e Isaac
+
+### Contexto
+
+Las dos mitades del sistema se escribieron en paralelo y le daban a `ERROR` un peso distinto.
+
+Del lado del coordinador, un rechazo devuelve `MGR_KEEP`: la conexión queda en pie y se sigue
+atendiendo. La idea era que rechazar una trama no tiene por qué matar una sesión sana.
+
+Del lado de `libdsm`, todo `ERROR` es terminal: corta y cierra, que es lo que `dsm.h` dice para los
+errores de sesión.
+
+Dos lecturas de la misma trama, y ninguna estaba escrita.
+
+### Decisión
+
+**`ERROR` es terminal para el trabajador.** La biblioteca rechaza localmente todo lo que puede
+detectar antes de enviar —página fuera de rango, modo inválido, adquisición anidada—, así que un
+`ERROR` que llega a un trabajador correcto solo puede venir de un defecto: del programa, de la
+biblioteca o del coordinador. Seguir operando sobre un estado que no se entiende es peor que morir,
+porque lo que se corrompe es la memoria compartida y el síntoma aparece lejos de la causa.
+
+**Del lado del coordinador no cambia nada, y eso es deliberado.** La consecuencia es que después de
+un rechazo esa conexión se cae por su cuenta y la sesión se aborta por `ECONN`, no por el rechazo.
+El `MGR_KEEP` igual hace falta, por dos razones:
+
+- **Es lo que garantiza que el `ERROR` salga.** Si el coordinador cerrara la conexión al rechazar,
+  el `ERROR` podría quedarse en el buffer de salida sin llegar nunca, y el trabajador vería un
+  cierre pelado —indistinguible de un coordinador muerto— en lugar de la causa.
+- **El par no siempre es `libdsm`.** Las sondas y el punta a punta hablan el protocolo a mano, y el
+  coordinador no tiene forma de saber quién está del otro lado. Rechazar sin matar es lo que le
+  permite atender a un par que decide no morirse.
+
+Dicho de otro modo: el coordinador no impone la política, la informa. Quien decide morir es el
+trabajador.
+
+### Lo que esto explica en el registro
+
+Una trama rechazada deja **dos** filas con causas distintas, y no es una inconsistencia:
+
+```
+ERROR        ... EINVAL     ← el rechazo, con el request_id de lo rechazado
+SESSION_END  ... ECONN      ← el trabajador cerró al recibirlo
+```
+
+La primera dice qué pasó; la segunda, cómo terminó. El verificador de #8 tiene que leerlas así y no
+como dos fallas.
+
+### Cómo se validó
+
+Isaac corrió su `libdsm` contra este coordinador durante la revisión del #4: un contador N×K con
+procesos separados, exacto con N=1, 2 y 4 y K=1000, y los cuatro nodos más el coordinador
+terminando con código 0. Los casos de caída —trabajador muerto, coordinador muerto, coordinador con
+`SIGTERM`, nodo vivo pero mudo— se detectan todos dentro del plazo configurado más el margen de
+limpieza.
