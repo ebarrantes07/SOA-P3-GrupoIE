@@ -1049,3 +1049,89 @@ si el sobrante es chico lo que llega entra al final sin mover nada. Hace falta q
 avanzada **y** que lo que llega no quepa al final aunque sí quepa en el total. Se agregó ese caso,
 construido con la aritmética exacta del buffer, y con él el mutante revienta con SEGV en vez de
 pasar.
+
+---
+
+## D3.3 — La sesión lleva nodos y barreras, sin conocer sockets ni páginas
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El coordinador tiene tres clases de estado: el de las páginas (el directorio, D2.1), el de los
+bytes en vuelo (las conexiones, D3.2) y el de los participantes — quién se registró, quién se fue,
+y en qué generación va cada barrera. Esto último es lo que falta.
+
+### Decisión
+
+Un módulo que habla solo de `node_id`. **No mapea nodos a conexiones**: qué descriptor le
+corresponde a cada uno lo sabe el coordinador. Si guardara descriptores, sus pruebas necesitarían
+sockets para nada, y los criterios de #4 sobre registro y barreras no se podrían verificar hasta
+que exista el ciclo `poll()`.
+
+Tampoco verifica si un nodo tiene páginas adquiridas: eso es estado del directorio y lo responde
+`dir_node_leave`. Ante un `BYE`, quien llama hace las dos comprobaciones (D0.13).
+
+### Barreras: tabla fija, y el casillero no se libera
+
+El `barrier_id` viene en `aux` y es un u32, así que no se puede indexar un arreglo con él. Hay una
+tabla de 16 casilleros, y cada uno recuerda la generación **abierta** de su barrera.
+
+El casillero **no se libera al liberarse la barrera**. Si se liberara, se perdería la generación, y
+la ronda siguiente llegaría con un número que no se podría validar contra nada — que es
+exactamente lo que D0.8 quiere detectar. Una barrera, una vez usada, se queda con su casillero.
+
+Al agotarse la tabla, una barrera nueva se rechaza con `DSM_EINVAL` en vez de desalojar a otra.
+Desalojar sería silencioso y volvería a perder la generación; rechazar se ve. Las cuatro
+aplicaciones del enunciado usan un puñado de barreras, pero el protocolo admite cualquier u32 y el
+coordinador no puede confiar en que el otro lado se porte.
+
+### Tres reglas que no estaban escritas en ningún lado
+
+**La primera generación de la vida de una barrera es la 0.** El trabajador manda cuántas veces *ya*
+pasó (D0.8), así que la primera vez son cero. Un casillero nuevo arranca con la 0 abierta, y una
+primera llegada con otro número se rechaza en vez de aceptarse como punto de partida: un nodo
+desincronizado se ve en su primera barrera, no ochenta generaciones después.
+
+**Un nodo espera en una sola barrera a la vez.** Después de llegar queda bloqueado hasta la
+liberación, así que una llegada a otra barrera solo puede venir de un trabajador desincronizado. Se
+rechaza para que se vea ahí, en vez de aparecer como una barrera que no libera nunca. Es el mismo
+invariante que el directorio tiene para los accesos.
+
+**Un `BYE` durante el registro aborta.** Irse antes de que estén los N deja a la sesión sin poder
+alcanzarlos nunca. Se aborta en el momento en vez de esperar al plazo, que solo podría decir "nadie
+llegó". Es la misma política del enunciado ante la pérdida de un participante que ya aplicaba D0.13
+para las barreras.
+
+### Dos cosas que salieron de que la prueba no coincidiera con el código
+
+**Un nodo esperando en dos barreras.** La prueba afirmaba que llegar a una segunda barrera se
+rechaza, y el módulo lo aceptaba. Ganó la prueba: era la regla correcta y faltaba implementarla.
+
+**Una llegada rechazada reservaba casillero.** Al arreglar lo anterior, la prueba siguió fallando
+por otro motivo: la reserva ocurría antes de validar, así que una llegada inválida consumía un
+casillero. Con 16 casilleros, un trabajador desincronizado podía agotar la tabla a fuerza de
+rechazos y dejar sin barreras a la sesión entera. Ahora se valida todo primero y se reserva solo al
+aceptar; una barrera que no existe tiene su generación abierta en 0 de forma implícita, que es lo
+que permite validar antes de crear.
+
+### Cómo se validó
+
+20 casos, todos sin red y sin directorio. Cubren los criterios de #4 sobre registro (N = 1, 2 y 4;
+ids fuera de orden; id repetido; incorporación tardía; lo que el trabajador declara, incluido el
+"sin opinión" de D0.7) y sobre barreras (liberación con todos, reutilización a lo largo de 50
+generaciones, una sola llegada por nodo y generación, generación adelantada y atrasada, tabla
+agotada, y que una rechazada no consuma casillero).
+
+Seis errores inyectados, cada uno hace fallar su prueba: contar la llegada duplicada, no validar la
+generación, no avanzarla al liberar, no abortar el `BYE` con una barrera esperando, reservar
+casillero antes de validar y aceptar una incorporación tardía.
+
+El último merece una nota, porque al principio **no fallaba**. Con los N registrados, todo id
+válido ya está ocupado, así que un `HELLO` tardío cae igual en "id repetido" y devuelve el mismo
+`DSM_ESTATE`. Lo único que distingue al chequeo es el **motivo** cuando el `HELLO` tardío trae
+además argumentos equivocados: con el chequeo es `ESTATE` ("llegaste tarde"), y sin él es `EINVAL`
+("revisá tu configuración"), que manda al nodo a buscar un problema que no tiene. Se agregó ese
+caso, y con él el mutante cae.
