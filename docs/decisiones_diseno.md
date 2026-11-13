@@ -1315,3 +1315,61 @@ Con un plazo configurado de 400 ms, medido tres veces:
 El criterio concede el plazo más 2 segundos de limpieza; esto llega en el plazo más 2 milisegundos.
 Las pruebas verifican las dos direcciones: que el error **no** llegue antes del plazo —abortar
 temprano mataría una operación lenta pero legítima— y que no llegue mucho después.
+
+---
+
+## D3.6 — Si el que muere es el coordinador: con señal avisa, con `SIGKILL` no puede
+
+- **Fecha:** 2026-11-12
+- **Issue:** [#4](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/4)
+- **Quién decide:** Emmanuel, a partir de una pregunta de Emmanuel en la revisión
+
+### Contexto
+
+Todo lo anterior cubre que el coordinador sobreviva a la pérdida de un trabajador (D3.5). Faltaba
+el caso inverso, que nadie había planteado: qué ve un trabajador cuando desaparece el coordinador.
+
+Medido antes de decidir nada, con el binario real:
+
+| cómo muere el coordinador | qué ve el trabajador |
+|---|---|
+| `SIGKILL` | cierre del flujo, a los **0 ms** |
+| `SIGTERM` (antes de este cambio) | cierre del flujo, a los **0 ms** |
+
+Es decir: la detección ya era inmediata, pero los dos casos eran indistinguibles.
+
+### Decisión
+
+Se separan, porque no son lo mismo.
+
+**Con `SIGKILL` no hay nada que hacer**, y eso está bien: el proceso no ejecuta una instrucción
+más. El núcleo cierra sus sockets, el `FIN` llega, y cada trabajador ve el cierre en el acto. Esa
+es toda la garantía que se puede dar, y alcanza.
+
+**Con `SIGTERM` o `SIGINT` sí se puede avisar**, porque es un apagado deliberado. El coordinador le
+encola un `ERROR` con `DSM_EABORT` a cada nodo vivo, vacía las salidas con un tope de 500 ms, y
+recién entonces cierra. Antes salía callado.
+
+La diferencia importa para el registro del trabajador: con el aviso puede anotar "la sesión se
+abortó" en vez de "se cortó la conexión", y esas dos cosas se investigan distinto. Sin el aviso, un
+apagado ordenado del operador y un coordinador que revienta se ven exactamente igual.
+
+El vaciado es **un esfuerzo razonable, no una garantía**: si un par dejó de leer, su buffer no se
+va a drenar nunca y colgarse por él sería peor que irse. De ahí el tope.
+
+### Lo que esto NO cubre, y de quién es
+
+Si se cae la máquina del coordinador o se corta la red, no llega ni un `FIN`. El trabajador se
+queda esperando en su `recv` hasta que vence **su propio** plazo, el de `dsm_options.timeout_ms`.
+No hay nada que el coordinador pueda hacer: ya no existe.
+
+Eso confirma que el plazo del lado del trabajador no es redundante con el del coordinador. Son dos
+plazos distintos que protegen de cosas distintas, y le toca a #5 implementar el segundo. Vale
+dejarlo escrito porque, visto desde este issue, parecía duplicado.
+
+### Cómo se validó
+
+`test_coordinator_death` en el punta a punta: registra dos trabajadores, mata al coordinador con
+cada una de las dos señales, y verifica que con `SIGTERM` llegue primero el `ERROR` con `EABORT` y
+después el cierre, y que con `SIGKILL` llegue solo el cierre. En los dos casos, dentro del margen
+de limpieza y sin esperar ningún plazo.

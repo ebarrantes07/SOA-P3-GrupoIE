@@ -152,6 +152,40 @@ static enum mgr_action servir_lectura(mgr *m, int ci, uint64_t now) {
     return MGR_KEEP;
 }
 
+/* Vacía lo encolado en todas las conexiones, con un tope de tiempo. Es UN
+ * esfuerzo razonable, no una garantía: si un par dejó de leer, no hay forma de
+ * entregarle nada y no vale la pena colgarse por él. */
+static void vaciar_salidas(mgr *m, uint32_t limite_ms) {
+    uint64_t plazo = io_deadline_in(limite_ms);
+    for (;;) {
+        int pendientes = 0;
+        for (int ci = 0; ci < mgr_conn_count(m); ci++) {
+            struct conn *c = mgr_conn(m, ci);
+            if (c == NULL || conn_pending(c) == 0)
+                continue;
+            enum io_status st = conn_send(c);
+            if (st == IO_ERROR || st == IO_CLOSED)
+                continue;      /* ese par ya no escucha; se lo deja */
+            if (conn_pending(c) > 0)
+                pendientes++;
+        }
+        if (pendientes == 0)
+            return;
+
+        /* Esperar a que alguna acepte más bytes. Se espera en la primera
+         * pendiente: para el apagado no vale la pena armar un poll() nuevo
+         * con todas, porque lo que queda son unas decenas de bytes. */
+        int fd = -1;
+        for (int ci = 0; ci < mgr_conn_count(m) && fd < 0; ci++) {
+            struct conn *c = mgr_conn(m, ci);
+            if (c != NULL && conn_pending(c) > 0)
+                fd = mgr_conn_fd(m, ci);
+        }
+        if (fd < 0 || io_wait(fd, true, plazo) != IO_OK)
+            return;            /* venció el plazo, o el par se fue */
+    }
+}
+
 int main(int argc, char **argv) {
     struct opciones o;
     if (!parse_args(argc, argv, &o))
@@ -333,6 +367,20 @@ int main(int argc, char **argv) {
             break;
         }
     }
+
+    /* Si salimos por una señal, los trabajadores merecen saber por qué. Sin
+     * esto solo ven el socket cerrado, que es indistinguible de que el
+     * coordinador se haya muerto de golpe: con el ERROR, el registro del
+     * trabajador puede decir "la sesión se abortó" en vez de "se cortó la
+     * conexión". */
+    if (pedido_de_salida) {
+        uint64_t now = now_monotonic_ns();
+        if (sess_state_of(mgr_session(m)) != SESS_ABORTED)
+            mgr_abort_session(m, DSM_EABORT, DSM_MAX_NODES, now);
+        fprintf(stderr, "dsm_manager: señal recibida; se avisa y se cierra\n");
+        salida = 1;
+    }
+    vaciar_salidas(m, 500);
 
     for (int ci = 0; ci < mgr_conn_count(m); ci++) {
         int fd = mgr_conn_fd(m, ci);

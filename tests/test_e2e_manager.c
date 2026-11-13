@@ -461,6 +461,71 @@ static bool test_late_connection_gets_an_error(void) {
     return true;
 }
 
+/* ¿Y si el que muere es el coordinador?
+ *
+ * Hay dos casos y se comportan distinto, a propósito:
+ *
+ *   SIGKILL: no puede ejecutar nada. El núcleo cierra sus sockets, los
+ *            trabajadores ven el cierre y eso es todo lo que se puede
+ *            ofrecer. Lo detectan al instante.
+ *
+ *   SIGTERM/SIGINT: es un apagado deliberado, así que alcanza a avisar. Manda
+ *            ERROR con DSM_EABORT y vacía la salida antes de cerrar.
+ *
+ * La diferencia importa para el registro del trabajador: con el aviso puede
+ * decir "la sesión se abortó" en vez de "se cortó la conexión", que es
+ * exactamente lo que no se sabría distinguir sin esto.
+ *
+ * Lo que NINGUNO de los dos cubre es que se caiga la máquina o la red: ahí no
+ * llega ni un FIN, y el trabajador se queda esperando hasta que vence SU
+ * propio plazo (`dsm_options.timeout_ms`). Eso es responsabilidad de #5 y no
+ * hay nada que el coordinador pueda hacer al respecto. */
+static bool test_coordinator_death(void) {
+    const int senales[] = {SIGTERM, SIGKILL};
+    for (size_t k = 0; k < 2; k++) {
+        struct coord c;
+        CHECK(coord_start(&c, 2, 4, 5000));
+
+        struct wk w[2];
+        struct wire_header h;
+        static uint8_t pl[DSM_MAX_PAYLOAD];
+        for (uint32_t i = 0; i < 2; i++)
+            CHECK(wk_hello(&w[i], &c, i, 2));
+        for (uint32_t i = 0; i < 2; i++) {
+            CHECK(wk_recv(&w[i], &h, pl, 3000));
+            CHECK(h.type == DSM_WIRE_SESSION_START);
+        }
+
+        uint64_t t0 = now_monotonic_ns();
+        kill(c.pid, senales[k]);
+        waitpid(c.pid, NULL, 0);
+
+        if (senales[k] == SIGTERM) {
+            /* Alcanzó a avisar: primero el ERROR, después el cierre. */
+            for (uint32_t i = 0; i < 2; i++) {
+                CHECK(wk_recv(&w[i], &h, pl, 3000));
+                CHECK(h.type == DSM_WIRE_ERROR);
+                CHECK(h.aux == (uint32_t)DSM_EABORT);
+            }
+        }
+
+        /* En los dos casos, lo siguiente es el cierre del flujo, y el
+         * trabajador lo ve sin esperar ningún plazo. */
+        for (uint32_t i = 0; i < 2; i++) {
+            struct frame_io r = frame_recv(w[i].fd, &h, pl, DSM_MAX_PAYLOAD,
+                                           io_deadline_in(3000));
+            CHECK(!frame_ok(r));
+            CHECK(r.io == IO_CLOSED);
+        }
+        uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        CHECK(ms < MARGEN_MS);
+
+        for (uint32_t i = 0; i < 2; i++)
+            wk_close(&w[i]);
+    }
+    return true;
+}
+
 /* Criterio de #4: "el log registra solicitud, concesión, invalidación, ACK,
  * publicación, barrera liberada y error, con secuencia global creciente".
  *
@@ -646,6 +711,7 @@ int main(void) {
         {"stuck_worker_hits_the_deadline", test_stuck_worker_hits_the_deadline},
         {"registration_has_a_deadline", test_registration_has_a_deadline},
         {"log_of_a_real_run", test_log_of_a_real_run},
+        {"coordinator_death", test_coordinator_death},
     };
     return test_util_run(tests, sizeof tests / sizeof tests[0]);
 }
