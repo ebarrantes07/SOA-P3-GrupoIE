@@ -24,9 +24,20 @@
  *     aplicación esté bloqueada esperando una concesión o una barrera.
  *
  * Todas las transiciones de la caché, y todas las filas de respuesta del
- * registro, las hace el receptor en el orden en que llegan las tramas. El
- * registro del trabajador queda así en el orden del flujo TCP, que es el
- * orden en que el coordinador las emitió.
+ * registro, las hace el receptor en el orden en que llegan las tramas.
+ *
+ * TURNO DE REGISTRO. Las filas de solicitud (ACQ_REQ, REL_*, BARRIER_ARRIVE,
+ * NODE_LEAVE) las escribe la aplicación, así que entre una respuesta y la
+ * solicitud siguiente hay que ordenar dos hilos. El receptor aplica la
+ * respuesta bajo mu y marca `rx_logging`; escribe la fila ya sin mu; y recién
+ * entonces limpia la marca y despierta. La aplicación no vuelve de su llamada
+ * mientras la marca esté puesta, así que su próxima fila siempre queda
+ * después de la respuesta que la habilitó. Sin el turno, la aplicación
+ * despertaba, hacía su siguiente llamada y a veces escribía primero: un
+ * REL_WRITE antes de su ACQ_GRANT, que el verificador de #8 leería como una
+ * violación del protocolo que no ocurrió (hallazgo de Emmanuel en el PR #15).
+ * Escribir la fila con mu tomado también ordenaría, pero anidaría mu y
+ * log_mu y pondría E/S de archivo bajo el candado de estado (D4.2).
  *
  *
  * TRES CANDADOS, Y NINGUNO SE SOSTIENE MIENTRAS SE ESPERA UNA RESPUESTA (D4.2)
@@ -117,6 +128,8 @@ struct dsm_ctx {
     enum dsm_status fatal;        /* DSM_OK mientras la sesión esté sana */
     bool            closing;      /* DSM_finalize empezó la despedida */
     bool            rx_exited;
+    bool            rx_logging;   /* turno de registro: el receptor está
+                                   * escribiendo la fila de una respuesta */
 
     pthread_mutex_t send_mu;
 
@@ -247,14 +260,22 @@ static struct wire_header header(uint8_t type, uint32_t page, uint64_t request,
  * sesión para los demás (enunciado, comunicación 6), y el receptor sale de su
  * lectura sin plazo. Los errores siguientes no pisan al primero, que es el
  * que explica qué pasó. */
+/* La mitad que va bajo mu: devuelve si este error fue el primero. Quien la
+ * llama hace el shutdown después de soltar mu, si corresponde. */
+static bool set_fatal_locked(dsm_ctx *c, enum dsm_status st) {
+    bool first = c->fatal == DSM_OK;
+
+    if (first)
+        c->fatal = st;
+    pthread_cond_broadcast(&c->cv);
+    return first;
+}
+
 static void fail(dsm_ctx *c, enum dsm_status st) {
     bool first;
 
     pthread_mutex_lock(&c->mu);
-    first = c->fatal == DSM_OK;
-    if (first)
-        c->fatal = st;
-    pthread_cond_broadcast(&c->cv);
+    first = set_fatal_locked(c, st);
     pthread_mutex_unlock(&c->mu);
 
     if (first)
@@ -297,19 +318,31 @@ static enum dsm_status wait_reply(dsm_ctx *c, uint64_t deadline_ns) {
     while (!c->w.wait.done && c->fatal == DSM_OK) {
         if (pthread_cond_timedwait(&c->cv, &c->mu, &ts) == ETIMEDOUT &&
             !c->w.wait.done && c->fatal == DSM_OK) {
-            timed_out = true;
+            /* El vencimiento se registra ACÁ, sin soltar mu. Si se soltara
+             * antes, una respuesta legítima que llegara en ese instante
+             * encontraría la espera ya retirada y el receptor la reportaría
+             * como trama inválida: el primer error sería un EPROTO que
+             * acusa al coordinador de algo que no hizo. Con el error ya
+             * puesto, el receptor descarta la respuesta tardía sin
+             * diagnosticar nada (D4.3). */
+            timed_out = set_fatal_locked(c, DSM_ETIMEOUT);
             break;
         }
     }
-    if (!timed_out && !c->w.wait.done)
+
+    /* Turno de registro: la respuesta llegó, pero su fila todavía no está
+     * escrita. Se espera sin plazo porque es una escritura de archivo local
+     * que el receptor ya empezó, no una espera de red. */
+    while (c->w.wait.done && c->rx_logging)
+        pthread_cond_wait(&c->cv, &c->mu);
+
+    if (!c->w.wait.done)
         st = c->fatal;
     c->w.wait.kind = WK_NONE;
     pthread_mutex_unlock(&c->mu);
 
-    if (timed_out) {
-        fail(c, DSM_ETIMEOUT);
-        st = current_fatal(c);   /* el receptor pudo haber fallado antes */
-    }
+    if (timed_out)
+        (void)shutdown(c->fd, SHUT_RDWR);
     return st;
 }
 
@@ -373,6 +406,14 @@ static void *receiver_main(void *arg) {
         count_recv(c, &h);
 
         pthread_mutex_lock(&c->mu);
+        if (c->fatal != DSM_OK) {
+            /* La sesión ya terminó, típicamente por un plazo vencido, y esta
+             * trama llegó tarde. Se descarta sin aplicarla ni acusar al
+             * coordinador: el error que explica la caída ya está puesto. */
+            st = c->fatal;
+            pthread_mutex_unlock(&c->mu);
+            break;
+        }
         t0 = c->w.wait.t0_ns;
         if (c->w.wait.kind == WK_GRANT)
             mode = c->w.wait.mode;
@@ -381,8 +422,10 @@ static void *receiver_main(void *arg) {
         else if (c->w.wait.kind == WK_REL_READ)
             mode = DSM_READ;
         st = wk_apply(&c->w, &h, payload, &e);
+        /* Sin broadcast todavía: la aplicación no despierta hasta que la
+         * fila de esta respuesta esté escrita (turno de registro, arriba). */
         if (st == DSM_OK && e.completed)
-            pthread_cond_broadcast(&c->cv);
+            c->rx_logging = true;
         pthread_mutex_unlock(&c->mu);
 
         if (h.type == DSM_WIRE_ERROR) {
@@ -417,6 +460,12 @@ static void *receiver_main(void *arg) {
                 rr.dur_ns = since(t0);
             }
             log_put(c, &rr);
+        }
+        if (e.completed) {
+            pthread_mutex_lock(&c->mu);
+            c->rx_logging = false;
+            pthread_cond_broadcast(&c->cv);
+            pthread_mutex_unlock(&c->mu);
         }
 
         if (e.ack) {
@@ -530,7 +579,9 @@ static enum dsm_status await_session(dsm_ctx *c, uint64_t deadline_ns,
  * después de haberse registrado —lo que abortaría la sesión de todos— se
  * prueba antes de conectar. */
 static bool log_path_writable(const char *path) {
-    FILE *f = fopen(path, "w");
+    /* "a" y no "w": la prueba no debe vaciar un registro existente si después
+     * la conexión falla y no hay sesión que lo reemplace. */
+    FILE *f = fopen(path, "a");
 
     if (f == NULL)
         return false;

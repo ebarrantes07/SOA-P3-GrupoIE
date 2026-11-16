@@ -1490,8 +1490,13 @@ después duerme en una variable de condición. Una trama que no coincide con lo 
 `DSM_EPROTO`: el coordinador nunca manda respuestas que nadie pidió.
 
 **Todas las transiciones de la caché las hace el receptor**, en el orden del flujo TCP, y también
-escribe las filas de respuesta del registro. Así el CSV del trabajador queda en el orden en que el
-coordinador emitió las tramas. Los estados por página son los cinco del issue: sin copia, copia
+escribe las filas de respuesta del registro.
+
+**Turno de registro.** Las filas de solicitud las escribe la aplicación, así que entre una
+respuesta y la solicitud siguiente hay dos hilos que ordenar. El receptor aplica la respuesta bajo
+`mu` y marca `rx_logging`, escribe la fila ya sin `mu`, y recién entonces limpia la marca y
+despierta. La aplicación no vuelve de su llamada mientras la marca esté puesta, así que su próxima
+fila siempre queda después de la respuesta que la habilitó. Los estados por página son los cinco del issue: sin copia, copia
 invalidada, copia retenida sin permiso, permiso READ y permiso WRITE. Solo la copia retenida se
 ofrece como `cached_version` en el `ACQ_REQ`, y todo `acquire` envía la solicitud igual.
 
@@ -1509,6 +1514,16 @@ receptor procesa el segundo la página ya está como copia retenida y se invalid
 
 Anotar antes de enviar evita la carrera inversa: que la concesión llegue antes de que alguien la
 espere.
+
+El turno de registro lo agregó la revisión de Emmanuel en el PR #15. En la primera versión el
+receptor despertaba a la aplicación antes de escribir su fila. La aplicación volvía de
+`DSM_acquire`, hacía su siguiente llamada y a veces escribía primero, y el CSV quedaba con un
+`REL_WRITE` antes de su `ACQ_GRANT` o con un `BARRIER_ARRIVE` antes del `WRITE_PUBLISHED`. Son
+violaciones aparentes del protocolo que no ocurrieron, y el verificador de #8 las habría
+reportado. A él le falló `log_records_events_with_correlation` en hasta 70 % de las corridas; acá
+no se vio porque la emulación es más lenta. Una pausa de 50 ms insertada en esa ventana la hacía
+fallar siempre, y con el turno pasa igual con la pausa puesta. Moverle la fila al receptor, sin el
+turno, solo cambiaba de dirección la misma carrera: hace falta ordenar.
 
 Tres situaciones que el protocolo no permite se tratan como error de protocolo, terminal:
 
@@ -1538,6 +1553,11 @@ Aceptar cualquiera de las tres significaría servir datos que no son los vigente
 
 Nunca se toman dos a la vez, y la variable de condición usa `CLOCK_MONOTONIC`, igual que los plazos
 del transporte (D1.1).
+
+El turno de registro de D4.1 no es un cuarto candado: es una marca bajo `mu` y una condición más
+en el predicado de la espera. Escribir la fila con `mu` tomado también habría ordenado el CSV,
+pero anida `mu` y `log_mu` y pone E/S de archivo bajo el candado de estado, que es justo lo que
+esta decisión evita.
 
 ### Por qué
 
@@ -1573,6 +1593,14 @@ sin abortar (D3.7). La biblioteca rechaza localmente todo lo detectable antes de
 un trabajador correcto solo le llega un `ERROR` por un defecto, y abortar es lo sano. Un `ERROR`
 que llega durante la despedida cuenta igual: `DSM_finalize` no informa un cierre limpio que no lo
 fue.
+
+**Un plazo vencido se decide bajo `mu`.** La aplicación registra `DSM_ETIMEOUT` sin soltar el
+candado, y el receptor descarta sin diagnosticar cualquier trama que llegue con la sesión ya
+terminada. Si el vencimiento se registrara después de soltar `mu`, una respuesta legítima que
+llegara en ese instante encontraría la espera ya retirada, el receptor la reportaría como
+`DSM_EPROTO` y podría ganar la carrera del primer error. El resultado sería la misma caída, pero el
+CSV culparía al coordinador de mandar una trama inválida cuando mandó una buena que llegó tarde
+(revisión de Emmanuel en el PR #15).
 
 El plazo de operación (`timeout_ms`, 10 s por omisión) acota cada espera del hilo de aplicación,
 incluidas las barreras. El receptor no tiene plazo: el coordinador puede estar callado
@@ -1637,7 +1665,8 @@ que la aplicación anotó la espera hasta que llegó la respuesta.
 
 El registro se abre al recibir `SESSION_START`, porque cada fila lleva el `run_id`. Antes de
 conectar se prueba que la ruta se pueda escribir: descubrirlo después de registrarse abortaría la
-sesión de todos.
+sesión de todos. La prueba abre la ruta con `"a"` y no con `"w"`, así no vacía un registro anterior
+si después la conexión falla y no hay sesión que lo reemplace.
 
 ### Por qué
 
