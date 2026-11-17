@@ -1496,9 +1496,11 @@ escribe las filas de respuesta del registro.
 respuesta y la solicitud siguiente hay dos hilos que ordenar. El receptor aplica la respuesta bajo
 `mu` y marca `rx_logging`, escribe la fila ya sin `mu`, y recién entonces limpia la marca y
 despierta. La aplicación no vuelve de su llamada mientras la marca esté puesta, así que su próxima
-fila siempre queda después de la respuesta que la habilitó. Los estados por página son los cinco del issue: sin copia, copia
-invalidada, copia retenida sin permiso, permiso READ y permiso WRITE. Solo la copia retenida se
-ofrece como `cached_version` en el `ACQ_REQ`, y todo `acquire` envía la solicitud igual.
+fila siempre queda después de la respuesta que la habilitó.
+
+Los estados por página son los cinco del issue: sin copia, copia invalidada, copia retenida sin
+permiso, permiso READ y permiso WRITE. Solo la copia retenida se ofrece como `cached_version` en el
+`ACQ_REQ`, y todo `acquire` envía la solicitud igual.
 
 **Las reglas viven en `worker.c`, que no sabe de hilos ni de sockets.** Es la misma frontera que
 `manager.c` tiene en el coordinador (D3.4): `wk_apply` recibe una trama decodificada y dice qué le
@@ -1717,3 +1719,140 @@ críticos del protocolo del trabajador, y todos hicieron fallar al menos una pru
 
 TSan no corre bajo la emulación amd64 de la Mac ("unexpected memory mapping"); queda para correrlo
 en Linux nativo antes del merge.
+
+---
+
+## D5.1 — El contador se verifica a sí mismo, y la barrera de arranque lo vuelve una prueba
+
+- **Fecha:** 2026-11-16
+- **Issue:** [#6](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/6)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+`app_counter` es la primera aplicación y la que cierra el punta a punta: N nodos, K incrementos
+cada uno de un `uint64_t` compartido, con un resultado esperado exacto en N·K. Lo que hay que
+decidir no es qué hace, que el enunciado lo fija, sino **cómo se sabe que funcionó**.
+
+### Decisión
+
+**El programa se verifica a sí mismo.** Después de una barrera final adquiere READ, compara con
+N·K y devuelve un código distinto de cero si no coincide. Así el criterio *"`make test` devuelve
+código distinto de cero ante cualquier incumplimiento"* se cumple por construcción y no porque un
+script busque un número en la salida.
+
+Los códigos separan cosas que se investigan distinto: **1** argumentos, sin haberse conectado a
+nada; **2** el DSM falló; **3** la sesión funcionó y el total está mal. El 3 es el que importa,
+porque "no se pudo correr" y "corrió y dio mal" no son el mismo problema.
+
+**El incremento ocurre en UN solo intervalo exclusivo.** Adquirir, sumar y liberar, con el
+leer-modificar-escribir entero adentro. Partirlo en un READ y un WRITE separados no sería atómico y
+ninguna barrera posterior lo arreglaría; es el error que `dsm.h` advierte, y esta aplicación existe
+para poder detectarlo.
+
+**La barrera de arranque no es ceremonia.** `DSM_init` espera a que estén los N nodos
+*registrados*, pero no a que estén los N *listos para sumar*. Sin la barrera, el nodo 0 puede
+terminar sus K incrementos antes de que el último arranque, y entonces nunca hay dos nodos peleando
+por la página: **el total saldría bien incluso con la exclusividad rota**. La barrera es lo que
+vuelve real la contención que la prueba quiere medir.
+
+**La página se usa como memoria**, con un `uint64_t` leído y escrito directamente y no con los
+conversores de orden de red de `wire.h`. El protocolo ordena los bytes de *sus* cabeceras; la
+región compartida son bytes que la aplicación interpreta como quiera, y usarla como memoria normal
+es justamente lo que este proyecto demuestra. Queda limitado a nodos de la misma arquitectura, que
+es el caso de esta entrega. La alineación está garantizada: el marco sale de `calloc` y la página
+mide 4096 bytes, múltiplo de 8.
+
+La validación de desborde de N·K ocurre **antes de conectarse**: una sesión que no puede dar un
+resultado verificable no vale la pena arrancarla, y abortarla a mitad le arruinaría la corrida a
+los otros nodos. Para que sea una comprobación de verdad y no aritmética que el tipo ya garantiza,
+`--iters` acepta todo el rango de un `uint64_t`.
+
+### Cómo se validó
+
+N=1, 2 y 4 con K=1000 dan 1000, 2000 y 4000 exactos; N=4 en cinco corridas seguidas, siempre 4000.
+
+Y lo que importa más: **que la prueba pueda fallar**. Con el incremento partido en dos intervalos
+el total da 1429, 1428 y 1425 de 4000, con salida 3 en las tres corridas. Un contador que siempre
+diera bien podría estar dando bien por casualidad.
+
+Bajo ASan/UBSan con `detect_leaks=1`, N=4 y K=200: 800 exacto, sin un solo reporte.
+
+---
+
+## D5.2 — Las pruebas de punta a punta: scripts para procesos, C para controlar tiempos
+
+- **Fecha:** 2026-11-16
+- **Issue:** [#6](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/6)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide un `make test` que lance el coordinador y los trabajadores, compruebe códigos de
+salida y resultados, aplique un límite global de tiempo y no deje nada vivo. Hay dos formas de
+escribir eso y las dos hacen falta, por motivos distintos.
+
+### Decisión
+
+**Lo que lanza los ejecutables de `BINS` va en `scripts/`.** `run_tests.sh` hace `exec` de lo que le
+pasen, sin importar si es un binario compilado o un script, así que un `scripts/e2e_*.sh` hereda
+gratis el límite por prueba, el límite **global** de la suite y el matado por grupo ante una señal.
+Nada de eso hubo que reimplementarlo. Corren al final, después de las unitarias: si un módulo está
+roto conviene verlo en su propia prueba antes de verlo como procesos que no se entienden.
+
+Corren igual bajo los sanitizers, porque usan los ejecutables que acaba de construir la compilación
+instrumentada. Eso es lo que cumple el criterio de que la suite **completa** corra bajo ASan/UBSan.
+
+**Lo que necesita controlar el momento de cada acción va en `tests/` como prueba de C.** El caso de
+coherencia —dos lectores a la vez, el escritor después— necesita procesos que compartan el código
+de la prueba, y eso un script no lo da.
+
+**Los casos que deben fallar van en su propio script.** Mezclar los que deben pasar con los que
+deben ser rechazados hace que un archivo se lea al revés en la mitad de sus líneas.
+
+### El perro guardián, y por qué hace falta
+
+Cada caso tiene un tope propio además del de `run_tests.sh`. No es redundante: **hay un cuelgue que
+el límite de afuera tardaría cinco minutos en delatar**, y corrido a mano no lo delata nadie.
+
+Si ningún trabajador llega a conectarse, el coordinador espera indefinidamente a propósito: su
+reloj de registro arranca con la primera conexión aceptada y no al arrancar el proceso (D3.5),
+porque se lanza a mano y acotar eso sería acotar al operador. Esa decisión es correcta desde el
+coordinador y, vista desde un arnés automático, es una espera sin fondo. El guardián la convierte
+en un fallo con nombre.
+
+### Las esperas crean el escenario; las afirmaciones lo verifican
+
+Es la distinción que vuelve confiable una prueba de concurrencia. En el caso de coherencia, los
+`proc_sleep_ms` hacen que los lectores retengan la página y que el escritor pida mientras la
+tienen. Pero **no se verifica nada con tiempos**: se verifica el estado y el orden del registro, y
+una de las afirmaciones es justamente que el solapamiento ocurrió.
+
+Esa afirmación se lee de **una sola fila**: la del `ACQ_REQ` del escritor, que lleva el estado del
+directorio tal como estaba al procesarla. Si ahí `readers_mask` vale `0x03`, en ese instante los
+nodos 0 y 1 tenían permiso de lectura a la vez. La primera versión comparaba posiciones de filas
+—el `ACQ_REQ` antes de los `REL_READ`—, que prueba lo mismo con más pasos y suponiendo que el orden
+del archivo es el orden real. La máscara no supone nada: es el estado medido.
+
+Si las esperas no alcanzaran en una máquina lenta, la prueba **falla** en vez de pasar sin haber
+probado nada, que es la trampa de este tipo de prueba.
+
+### Cómo se validó
+
+Que el arnés detecte, no solo que pase. Cuatro formas de fallar en el contador, cada una con el
+motivo correcto: un trabajador que sale con 2; una sesión correcta con el total informado falso
+—aislada con un envoltorio del binario real que corre la sesión de verdad y solo falsea lo que
+imprime, para que la cace el chequeo de resultado y no otro—; un coordinador que muere al arrancar,
+donde la lectura del FIFO devuelve fin de archivo en vez de colgarse; y un trabajador que no
+imprime.
+
+La cadena completa del criterio, que atraviesa tres capas (el script, `run_tests.sh`, el Makefile):
+con el incremento partido en dos intervalos, `make test` devuelve 2 y el diagnóstico llega hasta el
+nodo y la cantidad exacta de actualizaciones perdidas.
+
+En los casos de arranque, los dos modos de fallo del ayudante `rechaza` se probaron inyectando un
+`true` —"se aceptó (código 0)"— y un `sleep 30` —"no respondió, se colgó"—. En el de coherencia,
+dos mutantes: el escritor que pide tarde da "al pedir la escritura habia 0 lectores (mascara
+0x00)", y el lector que llega tarde también cae.
+
+Una corrida limpia de `make test` no deja ningún proceso ni ningún temporal.
