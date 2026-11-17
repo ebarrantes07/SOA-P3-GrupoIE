@@ -118,6 +118,15 @@ struct log_row {
     /* Estado de la página. NULL cuando el evento no se refiere a una. */
     const struct dir_page_info *page;
 
+    /* Versión sin el resto del estado del directorio. La usa el trabajador
+     * (#5), que conoce la versión de su copia pero no el escritor, los
+     * lectores ni las invalidaciones pendientes: con `page` en NULL y
+     * `has_version`, la columna `version` sale llena y las otras cuatro
+     * vacías. Si `page` no es NULL, manda `page`. Un `false` por omisión
+     * deja la celda vacía también con inicializadores designados. */
+    bool     has_version;
+    uint64_t version;
+
     /* El código que se devolvió o se registró. Va en su propia columna, no
      * en la de evento: así una fila de error conserva QUÉ se intentaba
      * (el evento) además de POR QUÉ falló (el estado). DSM_OK = celda
@@ -181,7 +190,8 @@ struct log_traffic {
     uint64_t msgs_in, msgs_out;
     uint64_t bytes_in, bytes_out;
     uint64_t page_xfers;   /* tramas que llevaron una página completa */
-    uint64_t invals;       /* INVALIDATE enviados */
+    uint64_t invals;       /* INVALIDATE que cruzaron: enviados por el
+                            * coordinador, recibidos por el trabajador */
 };
 
 /* Instantánea de los contadores. Con `lg == NULL` devuelve todo en cero. */
