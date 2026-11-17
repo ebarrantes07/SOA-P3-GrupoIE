@@ -18,6 +18,7 @@
  * que el plazo valga 10 s.
  */
 #include "dsm.h"
+#include "test_csv.h"
 #include "test_proc.h"
 #include "test_util.h"
 
@@ -229,85 +230,6 @@ static int counter_node(uint16_t port, uint32_t nid, void *arg) {
     WCHECK(DSM_barrier(c, 0) == 0);
     WCHECK(DSM_finalize(c) == 0);
     return 0;
-}
-
-struct csv {
-    char   header[512];
-    char **rows;
-    size_t n;
-};
-
-static bool csv_load(const char *path, struct csv *out) {
-    char line[512];
-    FILE *f = fopen(path, "r");
-    size_t cap = 0;
-
-    memset(out, 0, sizeof *out);
-    if (f == NULL || fgets(out->header, sizeof out->header, f) == NULL) {
-        if (f != NULL)
-            fclose(f);
-        return false;
-    }
-    while (fgets(line, sizeof line, f) != NULL) {
-        if (out->n == cap) {
-            cap = cap ? cap * 2 : 64;
-            out->rows = realloc(out->rows, cap * sizeof *out->rows);
-        }
-        out->rows[out->n++] = strdup(line);
-    }
-    fclose(f);
-    return true;
-}
-
-static void csv_free(struct csv *c) {
-    for (size_t i = 0; i < c->n; i++)
-        free(c->rows[i]);
-    free(c->rows);
-}
-
-/* Columna k de una fila, copiada a `out`. */
-static void field(const char *row, int k, char *out, size_t cap) {
-    const char *s = row;
-
-    for (int i = 0; i < k && s != NULL; i++) {
-        s = strchr(s, ',');
-        if (s != NULL)
-            s++;
-    }
-    if (s == NULL) {
-        out[0] = '\0';
-        return;
-    }
-    size_t n = strcspn(s, ",\n");
-    if (n >= cap)
-        n = cap - 1;
-    memcpy(out, s, n);
-    out[n] = '\0';
-}
-
-enum { F_RUN = 0, F_COMP = 1, F_NODE = 3, F_REQ = 4, F_PAGE = 5, F_EVENT = 6,
-       F_VERSION = 9 };
-
-/* ¿Tiene el coordinador una fila `event` con ese nodo y request_id, y la
- * misma versión si se pide? */
-static bool coord_has(const struct csv *co, const char *event, const char *node,
-                      const char *req, const char *version) {
-    char ev[32], nd[16], rq[32], ver[32];
-
-    for (size_t i = 0; i < co->n; i++) {
-        field(co->rows[i], F_EVENT, ev, sizeof ev);
-        if (strcmp(ev, event) != 0)
-            continue;
-        field(co->rows[i], F_NODE, nd, sizeof nd);
-        field(co->rows[i], F_REQ, rq, sizeof rq);
-        if (strcmp(nd, node) != 0 || strcmp(rq, req) != 0)
-            continue;
-        if (version == NULL)
-            return true;
-        field(co->rows[i], F_VERSION, ver, sizeof ver);
-        return strcmp(ver, version) == 0;
-    }
-    return false;
 }
 
 /* El mismo formato y el mismo run_id en los tres archivos, y cada solicitud,
