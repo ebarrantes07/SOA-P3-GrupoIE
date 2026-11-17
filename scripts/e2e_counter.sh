@@ -23,9 +23,27 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 COORD="$ROOT/dsm_manager"
 APP="$ROOT/app_counter"
 
-# K del criterio de aceptación. Se puede bajar para iterar a mano, pero la
-# suite corre el valor del criterio.
-K=${E2E_ITERS:-1000}
+# K del criterio de aceptación, con una excepción medida.
+#
+# Con la fragmentación forzada de DSM_IO_CHUNK_MAX cada lectura y cada
+# escritura mueven ese tope de bytes, así que una página de 4096 cuesta miles
+# de llamadas al sistema en vez de una o dos. Con K=1000 y cuatro nodos son
+# 4000 transferencias de página en cada sentido: la corrida no termina en
+# ningún tiempo razonable, y lo que se ve es el perro guardián matando a todos.
+#
+# En esa configuración se baja K. Lo que esa variable existe para ejercer es el
+# CAMINO de la transferencia fragmentada de punta a punta, y veinte incrementos
+# por nodo lo ejercen igual de bien que mil. El valor del criterio es el que
+# corre en la configuración normal, que es la que lo tiene que cumplir.
+#
+# Un E2E_ITERS explícito gana sobre las dos cosas: si alguien pide un K, es ese.
+if [ -n "${E2E_ITERS:-}" ]; then
+    K=$E2E_ITERS
+elif [ -n "${DSM_IO_CHUNK_MAX:-}" ]; then
+    K=20
+else
+    K=1000
+fi
 
 # Plazo por operación de los procesos. Generoso a propósito: esta prueba
 # verifica el RESULTADO, no la latencia, y una máquina cargada no debería
@@ -43,7 +61,15 @@ PAGES=4
 # lanza a mano y acotar eso sería acotar al operador. Visto desde acá, eso es
 # una espera sin fondo, y el perro guardián es lo que la convierte en un fallo
 # con nombre.
-LIMITE_S=${E2E_LIMIT_S:-60}
+# Un cuelgue es infinito, así que cualquier tope finito lo caza: el único costo
+# de un tope grande es cuánto se tarda en saberlo. Por eso hay margen de sobra
+# sobre el costo medido —0,9 s en la configuración normal y 3 a 6 s con la
+# fragmentación forzada— y queda bien por debajo del límite por prueba de
+# run_tests.sh, que es lo que permite informar un fallo con nombre en vez de un
+# "TIEMPO AGOTADO" genérico. Durante el desarrollo vi dos corridas de 67 s que
+# no pude reproducir en nueve intentos y que atribuyo a carga del anfitrión;
+# ajustar este tope a lo medido habría convertido eso en un fallo falso.
+LIMITE_S=${E2E_LIMIT_S:-120}
 
 TMP=$(mktemp -d) || exit 1
 

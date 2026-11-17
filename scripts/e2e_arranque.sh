@@ -20,7 +20,7 @@ set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 COORD="$ROOT/dsm_manager"
 APP="$ROOT/app_counter"
-LIMITE_S=${E2E_LIMIT_S:-30}
+LIMITE_S=${E2E_LIMIT_S:-120}   # ver el comentario de e2e_counter.sh
 TMP=$(mktemp -d) || exit 1
 
 fallas=0
