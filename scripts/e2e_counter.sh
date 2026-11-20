@@ -61,6 +61,16 @@ PAGES=4
 # lanza a mano y acotar eso sería acotar al operador. Visto desde acá, eso es
 # una espera sin fondo, y el perro guardián es lo que la convierte en un fallo
 # con nombre.
+# Cada proceso se lanza bajo `timeout`, que es quien aplica este tope. La
+# alternativa —un subproceso guardián que duerme y después mata a todos— tiene
+# un defecto que no se ve leyéndola: al desarmarlo se mata la subshell pero el
+# `sleep` queda huérfano, conservando el stdout del script, y entonces
+# `make test | tee log` no termina hasta que ese sleep venza. Lo encontró Isaac
+# revisando el #16, midiendo que `make test` por tubería tardaba 132 s después
+# de que la suite ya había pasado. Con `timeout` no hay subshell, no hay sleep
+# y nada hereda la salida; de paso el código 124 nombra el vencimiento mejor
+# que el 137 de un SIGKILL.
+#
 # Un cuelgue es infinito, así que cualquier tope finito lo caza: el único costo
 # de un tope grande es cuánto se tarda en saberlo. Por eso hay margen de sobra
 # sobre el costo medido —0,9 s en la configuración normal y 3 a 6 s con la
@@ -75,7 +85,6 @@ TMP=$(mktemp -d) || exit 1
 
 coord_pid=''
 worker_pids=''
-guard_pid=''
 fallas=0
 
 # Mata lo que haya quedado vivo y borra el temporal. Se llama en toda salida,
@@ -83,9 +92,6 @@ fallas=0
 # trabajador huérfano violaría el criterio de que no sobreviva ningún proceso
 # del programa a `make test`.
 limpiar() {
-    if [ -n "$guard_pid" ]; then
-        kill -KILL "$guard_pid" 2>/dev/null
-    fi
     for p in $worker_pids; do
         kill -KILL "$p" 2>/dev/null
     done
@@ -110,11 +116,15 @@ caso() {
     mal=0
 
     echo "-- N=$n K=$K esperado=$esperado"
-    rm -f "$fifo" "$salida"
+    # app.err también: con 2>> se acumula entre casos, y entonces el informe
+    # de un fallo en N=4 imprimiría además el stderr de N=1 y N=2. coord.err
+    # usa 2> y ya trunca solo.
+    rm -f "$fifo" "$salida" "$TMP/app.err"
     mkfifo "$fifo" || { decir "no se pudo crear el fifo"; return 1; }
 
-    "$COORD" --nodes "$n" --pages "$PAGES" --port 0 \
-             --timeout-ms "$TIMEOUT_MS" > "$fifo" 2> "$TMP/coord.err" &
+    timeout "$LIMITE_S" \
+        "$COORD" --nodes "$n" --pages "$PAGES" --port 0 \
+                 --timeout-ms "$TIMEOUT_MS" > "$fifo" 2> "$TMP/coord.err" &
     coord_pid=$!
 
     # El puerto se lee de un FIFO, y esa lectura es la que SINCRONIZA: se
@@ -137,18 +147,12 @@ caso() {
     worker_pids=''
     i=0
     while [ "$i" -lt "$n" ]; do
-        "$APP" --port "$port" --nodes "$n" --id "$i" --iters "$K" \
-               >> "$salida" 2>> "$TMP/app.err" &
+        timeout "$LIMITE_S" \
+            "$APP" --port "$port" --nodes "$n" --id "$i" --iters "$K" \
+                   >> "$salida" 2>> "$TMP/app.err" &
         worker_pids="$worker_pids $!"
         i=$((i + 1))
     done
-
-    # El guardián: si el caso no termina dentro del límite, mata a todos. Eso
-    # desbloquea los `wait` de abajo, que recogen el 137 de SIGKILL y lo
-    # informan como falla. Un `wait` sin tope sería una espera sin fondo.
-    ( sleep "$LIMITE_S"
-      kill -KILL $worker_pids "$coord_pid" 2>/dev/null ) &
-    guard_pid=$!
 
     # Códigos de salida de los trabajadores. Se esperan TODOS antes de juzgar,
     # para que un fallo temprano no esconda los demás en el informe.
@@ -173,12 +177,6 @@ caso() {
         mal=1
     fi
     coord_pid=''
-
-    # Se desarma: ya no hay a quién matar, y dejarlo vivo haría que el script
-    # tardara el límite entero en volver.
-    kill -KILL "$guard_pid" 2>/dev/null
-    wait "$guard_pid" 2>/dev/null
-    guard_pid=''
 
     # El resultado, además de los códigos. Tienen que estar las N líneas: si
     # faltara una, algún nodo no llegó a verificar y eso no se ve en su

@@ -1810,16 +1810,37 @@ de la prueba, y eso un script no lo da.
 **Los casos que deben fallar van en su propio script.** Mezclar los que deben pasar con los que
 deben ser rechazados hace que un archivo se lea al revés en la mitad de sus líneas.
 
-### El perro guardián, y por qué hace falta
+### Cada proceso bajo `timeout`, y por qué no un guardián propio
 
-Cada caso tiene un tope propio además del de `run_tests.sh`. No es redundante: **hay un cuelgue que
-el límite de afuera tardaría cinco minutos en delatar**, y corrido a mano no lo delata nadie.
+Cada proceso se lanza bajo `timeout`, con un tope propio además del de `run_tests.sh`. No es
+redundante: **hay un cuelgue que el límite de afuera tardaría cinco minutos en delatar**, y corrido
+a mano no lo delata nadie.
 
 Si ningún trabajador llega a conectarse, el coordinador espera indefinidamente a propósito: su
 reloj de registro arranca con la primera conexión aceptada y no al arrancar el proceso (D3.5),
 porque se lanza a mano y acotar eso sería acotar al operador. Esa decisión es correcta desde el
-coordinador y, vista desde un arnés automático, es una espera sin fondo. El guardián la convierte
-en un fallo con nombre.
+coordinador y, vista desde un arnés automático, es una espera sin fondo. El tope la convierte en un
+fallo con nombre, y con `timeout` ese nombre es el código **124**, que significa exactamente "se
+venció" en vez del 137 indistinguible de cualquier otro `SIGKILL`.
+
+La primera versión no usaba `timeout` sino un subproceso guardián —`( sleep N; kill ... ) &`— y
+tenía un defecto que no se ve leyéndola. Al desarmarlo se mata la subshell, pero **el `sleep` queda
+huérfano**, y conserva el `stdout` del script. El síntoma no aparece en la suite: aparece cuando
+alguien encadena la salida. Medido por Isaac revisando el #16:
+
+| | |
+|---|---|
+| `sleep` huérfanos tras una corrida del contador | 3, uno por caso |
+| `make test > archivo` | 20 s |
+| `make test \| cat` | no terminaba, aunque la suite ya había pasado |
+
+Cualquiera que hiciera `make test | tee log`, o un CI, habría visto dos minutos de cuelgue después
+de que todo pasó. Es justo lo que el guardián existía para evitar, causado por el guardián.
+
+Se podía arreglar el guardián: que la subshell matara a su `sleep` con un `trap`, se redirigiera a
+`/dev/null` y se la señalara con `TERM`. Son tres cambios coordinados. `timeout` **elimina el
+problema** en vez de corregirlo: no hay subshell, no hay `sleep` y nada hereda la salida. Y no
+agrega una dependencia, porque `run_tests.sh` y el Makefile ya lo usan.
 
 ### Las esperas crean el escenario; las afirmaciones lo verifican
 

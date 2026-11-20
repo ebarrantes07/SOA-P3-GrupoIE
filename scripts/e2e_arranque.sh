@@ -65,8 +65,14 @@ coord_arranca() {
     pages=$2
     rm -f "$TMP/puerto"
     mkfifo "$TMP/puerto" || return 1
-    "$COORD" --nodes "$n" --pages "$pages" --port 0 --timeout-ms 5000 \
-             > "$TMP/puerto" 2> "$TMP/coord.err" &
+    # Bajo `timeout`, que es la red de seguridad: hace falta porque el reloj de
+    # registro del coordinador arranca con la primera conexión y no al arrancar
+    # el proceso (D3.5), así que sin ningún nodo espera indefinidamente. Un
+    # subproceso guardián con `sleep` haría lo mismo pero dejaría el sleep
+    # huérfano con el stdout del script tomado (ver e2e_counter.sh).
+    timeout "$LIMITE_S" \
+        "$COORD" --nodes "$n" --pages "$pages" --port 0 --timeout-ms 5000 \
+                 > "$TMP/puerto" 2> "$TMP/coord.err" &
     coord_pid=$!
     pids="$pids $coord_pid"
     port=''
@@ -74,21 +80,12 @@ coord_arranca() {
         return 1
     fi
     exec 3<&-
-    # Red de seguridad: si el caso no avanza, esto lo desbloquea y el `wait`
-    # recoge un 137 en vez de esperar para siempre. Hace falta porque el reloj
-    # de registro del coordinador arranca con la primera conexión y no al
-    # arrancar el proceso (D3.5): sin ningún nodo, espera indefinidamente.
-    ( sleep "$LIMITE_S"; kill -KILL "$coord_pid" 2>/dev/null ) &
-    guard_pid=$!
-    pids="$pids $guard_pid"
     return 0
 }
 
 coord_termina() {
     wait "$coord_pid" 2>/dev/null
     rc_coord=$?
-    kill -KILL "$guard_pid" 2>/dev/null
-    wait "$guard_pid" 2>/dev/null
     pids=''
 }
 
@@ -117,8 +114,9 @@ echo "-- una página que no existe en esta sesión"
 # región de 4 páginas, así que solo se puede rechazar después del arranque.
 # Con un solo nodo no hay nadie más a quien arruinarle la corrida.
 if coord_arranca 1 4; then
-    if "$APP" --port "$port" --nodes 1 --id 0 --iters 1 --page 99 \
-              > "$TMP/out" 2>&1; then
+    if timeout "$LIMITE_S" \
+           "$APP" --port "$port" --nodes 1 --id 0 --iters 1 --page 99 \
+                  > "$TMP/out" 2>&1; then
         echo "   FALLO: se aceptó la página 99 en una región de 4"
         fallas=$((fallas + 1))
     else
@@ -150,9 +148,11 @@ echo "-- identificadores repetidos"
 # Lo que se verifica es que NINGUNO termine en 0 y que nada se cuelgue; que la
 # sesión no siga adelante con menos nodos de los pedidos es el punto.
 if coord_arranca 2 4; then
-    "$APP" --port "$port" --nodes 2 --id 0 --iters 1 > "$TMP/a" 2>&1 &
+    timeout "$LIMITE_S" "$APP" --port "$port" --nodes 2 --id 0 --iters 1 \
+            > "$TMP/a" 2>&1 &
     a=$!
-    "$APP" --port "$port" --nodes 2 --id 0 --iters 1 > "$TMP/b" 2>&1 &
+    timeout "$LIMITE_S" "$APP" --port "$port" --nodes 2 --id 0 --iters 1 \
+            > "$TMP/b" 2>&1 &
     b=$!
     pids="$pids $a $b"
     wait "$a"; ra=$?
