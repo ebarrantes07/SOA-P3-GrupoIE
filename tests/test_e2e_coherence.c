@@ -162,6 +162,7 @@ static bool test_three_nodes_two_readers_then_a_writer(void) {
     struct proc_coord co;
     struct csv c;
     pid_t w[NODOS];
+    bool ok = true;
     int fd = mkstemp(clog);
 
     CHECK(fd >= 0);
@@ -173,19 +174,45 @@ static bool test_three_nodes_two_readers_then_a_writer(void) {
     for (uint32_t i = 0; i < NODOS; i++)
         w[i] = proc_worker(coherence_node, co.port, i, NULL);
 
-    /* Los tres tienen que terminar en 0: el valor nuevo lo verifica cada uno
-     * en su propio proceso, así que un 1 acá ya dice que alguien no lo vio. */
-    for (uint32_t i = 0; i < NODOS; i++)
-        CHECK(proc_wait(w[i], WAIT_MS) == 0);
-    /* Y el coordinador, que sale en 0 solo si los tres se despidieron. */
-    CHECK(proc_wait(co.pid, WAIT_MS) == 0);
+    /* Se espera a TODOS, sin cortar en el primero que falle, y después se
+     * juzga. No es solo por el informe: `proc_wait` mata y recoge al proceso
+     * que no termine dentro del tope, así que recorrer la lista entera es lo
+     * que garantiza que no quede ninguno vivo. Cortando en el primer fallo se
+     * incumplía el criterio de #6 —"no queda ningún proceso"— precisamente
+     * cuando la prueba falla, que es cuando más importa. Lo encontró Isaac
+     * revisando el #16.
+     *
+     * El valor nuevo lo verifica cada nodo en su propio proceso, así que un
+     * código distinto de 0 ya dice que alguien no lo vio. */
+    for (uint32_t i = 0; i < NODOS; i++) {
+        if (proc_wait(w[i], WAIT_MS) != 0) {
+            fprintf(stderr, "  el trabajador %lu no terminó en 0\n",
+                    (unsigned long)i);
+            ok = false;
+        }
+    }
+    /* El coordinador sale en 0 solo si los tres se despidieron. */
+    if (proc_wait(co.pid, WAIT_MS) != 0) {
+        fprintf(stderr, "  el coordinador no terminó en 0\n");
+        ok = false;
+    }
 
-    CHECK(csv_load(clog, &c));
-    CHECK(lectores_coexisten_cuando_el_escritor_pide(&c));
-    CHECK(acks_antes_del_grant(&c));
-    csv_free(&c);
-    unlink(clog);
-    return true;
+    /* El registro se juzga solo si la corrida llegó a término: sobre un CSV
+     * truncado las afirmaciones dirían cosas confusas de algo que ya se sabe
+     * mal, y taparían el motivo real. */
+    if (ok) {
+        if (csv_load(clog, &c)) {
+            ok = lectores_coexisten_cuando_el_escritor_pide(&c) &&
+                 acks_antes_del_grant(&c);
+            csv_free(&c);
+        } else {
+            fprintf(stderr, "  no se pudo leer el registro del coordinador\n");
+            ok = false;
+        }
+    }
+
+    unlink(clog);   /* en todos los caminos, también al fallar */
+    return ok;
 }
 
 int main(void) {

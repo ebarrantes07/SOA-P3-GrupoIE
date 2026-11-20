@@ -24,7 +24,10 @@
  * CÓDIGOS DE SALIDA, para que `make test` sepa qué falló sin leer la salida:
  *
  *   0  el contador terminó en N*K
- *   1  argumentos inválidos; no se conectó a nada
+ *   1  argumentos inválidos. Casi todos se rechazan antes de abrir un
+ *      socket; la excepción es `--page`, que solo se puede validar contra la
+ *      cantidad de páginas que el coordinador define al arrancar la sesión
+ *      (D0.7), así que ese caso sale con 1 ya conectado
  *   2  el DSM falló (conexión, plazo, sesión abortada, rechazo)
  *   3  la sesión funcionó pero el contador NO terminó en N*K
  *
@@ -79,8 +82,13 @@ static void uso(const char *prog) {
         DSM_DEFAULT_TIMEOUT_MS);
 }
 
-/* Devuelve false si los argumentos no sirven, dejando el motivo impreso. */
-static bool parse_args(int argc, char **argv, struct opciones *o) {
+/* Pedir ayuda no es un error, así que no puede devolver lo mismo que un
+ * argumento inválido: quien escribe `--help` espera un 0. */
+enum parse_result { PARSE_OK, PARSE_HELP, PARSE_ERROR };
+
+/* PARSE_ERROR si los argumentos no sirven, dejando el motivo impreso. */
+static enum parse_result parse_args(int argc, char **argv,
+                                    struct opciones *o) {
     o->host       = "127.0.0.1";
     o->port       = 0;
     o->nodes      = 0;
@@ -97,11 +105,11 @@ static bool parse_args(int argc, char **argv, struct opciones *o) {
 
         if (strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) {
             uso(argv[0]);
-            return false;
+            return PARSE_HELP;
         }
         if (!tiene_valor) {
             fprintf(stderr, "%s: falta el valor de %s\n", argv[0], a);
-            return false;
+            return PARSE_ERROR;
         }
 
         if (strcmp(a, "--port") == 0) {
@@ -133,33 +141,33 @@ static bool parse_args(int argc, char **argv, struct opciones *o) {
             o->log_path = v;
         } else {
             fprintf(stderr, "%s: opción desconocida: %s\n", argv[0], a);
-            return false;
+            return PARSE_ERROR;
         }
         i++;
         continue;
     malo:
         fprintf(stderr, "%s: valor inválido para %s: %s\n", argv[0], a, v);
-        return false;
+        return PARSE_ERROR;
     }
 
     if (o->port == 0) {
         fprintf(stderr, "%s: falta --port\n", argv[0]);
-        return false;
+        return PARSE_ERROR;
     }
     if (o->nodes == 0) {
         fprintf(stderr, "%s: falta --nodes\n", argv[0]);
-        return false;
+        return PARSE_ERROR;
     }
     if (o->nid == NID_SIN_DAR) {
         fprintf(stderr, "%s: falta --id\n", argv[0]);
-        return false;
+        return PARSE_ERROR;
     }
     /* El identificador se valida contra los nodos de ESTA sesión, no contra
      * el máximo del protocolo: con --nodes 2, el id 3 no existe. */
     if (o->nid >= o->nodes) {
         fprintf(stderr, "%s: --id %lu fuera de rango para --nodes %lu\n",
                 argv[0], (unsigned long)o->nid, (unsigned long)o->nodes);
-        return false;
+        return PARSE_ERROR;
     }
     /* Desborde del total esperado, ANTES de conectarse: una sesión que no
      * puede dar un resultado verificable no vale la pena arrancarla, y
@@ -169,9 +177,9 @@ static bool parse_args(int argc, char **argv, struct opciones *o) {
                 "%s: --nodes %lu por --iters %llu desborda un uint64\n",
                 argv[0], (unsigned long)o->nodes,
                 (unsigned long long)o->iters);
-        return false;
+        return PARSE_ERROR;
     }
-    return true;
+    return PARSE_OK;
 }
 
 /* Imprime el motivo de una falla del DSM con el estado que la explica. */
@@ -193,8 +201,11 @@ int main(int argc, char **argv) {
     const uint64_t *lectura;
     int salida = SALIDA_OK;
 
-    if (!parse_args(argc, argv, &o))
-        return SALIDA_ARGS;
+    switch (parse_args(argc, argv, &o)) {
+    case PARSE_OK:    break;
+    case PARSE_HELP:  return SALIDA_OK;
+    case PARSE_ERROR: return SALIDA_ARGS;
+    }
 
     esperado = (uint64_t)o.nodes * o.iters;
 
