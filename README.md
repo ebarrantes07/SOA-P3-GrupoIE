@@ -40,15 +40,34 @@ Compilación con `-std=c17 -Wall -Wextra -Wpedantic -Werror -pthread`.
 ## Compilación
 
 ```bash
-make           # compila los ejecutables cuyo main ya exista
-make test      # pruebas automatizadas, con límite de tiempo por binario
-make test-san  # la misma suite bajo AddressSanitizer y UndefinedBehaviorSanitizer
-make test-tsan # la misma suite bajo ThreadSanitizer (compilación aparte)
-make clean     # elimina objetos y ejecutables
+make               # compila los ejecutables cuyo main ya exista
+make test          # pruebas automatizadas, con límite de tiempo por binario
+make test-san      # la misma suite bajo AddressSanitizer y UndefinedBehaviorSanitizer
+make test-tsan     # la misma suite bajo ThreadSanitizer (compilación aparte)
+make test-robustez # la suite repetida con fallos inyectados (tarda minutos)
+make clean         # elimina objetos y ejecutables
 ```
 
-`make test` devuelve un código distinto de cero ante cualquier incumplimiento. Las tres suites se
-compilan por separado: ASan/UBSan y TSan no se pueden combinar en un mismo binario.
+`make test` devuelve un código distinto de cero ante cualquier incumplimiento, y comprueba al
+terminar que no haya quedado ningún proceso del programa vivo ni temporales sin borrar. Las tres
+suites se compilan por separado: ASan/UBSan y TSan no se pueden combinar en un mismo binario.
+
+`make test-robustez` repite la suite completa siete veces, una por cada tamaño de fragmento de 1 a
+7 bytes, que fuerza a que cada envío y cada recepción se partan en pedazos de ese tamaño. Agrega una
+octava pasada, dirigida solo a las pruebas de la biblioteca, con un retardo inyectado en una ventana
+de concurrencia que de otro modo es demasiado angosta para que una prueba la alcance. Va aparte de
+`make test` porque tarda unos dos minutos.
+
+El registro de una corrida se puede auditar sin leer el código:
+
+```bash
+./scripts/verificar_invariantes.py registro.csv
+```
+
+Comprueba, reconstruyendo el estado a partir de los eventos, que haya un solo escritor por página,
+que no coexistan lectores ni copias ajenas con un escritor, que cada concesión de escritura llegue
+después de todos los ACK de invalidación que requería, que las versiones no retrocedan y que un ACK
+repetido no cierre una ronda.
 
 ## Organización del repositorio
 

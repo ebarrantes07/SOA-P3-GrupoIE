@@ -342,6 +342,8 @@ static bool test_killed_worker_tells_the_rest(void) {
         CHECK(h.aux == (uint32_t)DSM_ECONN);
     }
     uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+    fprintf(stderr, "  trabajador muerto: el resto se enteró a los %llu ms\n",
+            (unsigned long long)ms);
     CHECK(ms < MARGEN_MS);
 
     for (uint32_t i = 0; i < 2; i++)
@@ -392,6 +394,8 @@ static bool test_stuck_worker_hits_the_deadline(void) {
     CHECK(h.aux == (uint32_t)DSM_ETIMEOUT);
 
     uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+    fprintf(stderr, "  nodo vivo pero mudo: error a los %llu ms (plazo %u)\n",
+            (unsigned long long)ms, PLAZO_MS);
     /* No antes del plazo: si abortara antes, una operación lenta pero
      * legítima moriría sin motivo. */
     CHECK(ms + 50u >= PLAZO_MS);
@@ -427,6 +431,8 @@ static bool test_registration_has_a_deadline(void) {
     CHECK(h.type == DSM_WIRE_ERROR);
     CHECK(h.aux == (uint32_t)DSM_ETIMEOUT);
     uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+    fprintf(stderr, "  registro incompleto: error a los %llu ms (plazo %u)\n",
+            (unsigned long long)ms, PLAZO_MS);
     CHECK(ms + 50u >= PLAZO_MS);
     CHECK(ms <= PLAZO_MS + MARGEN_MS);
 
@@ -518,6 +524,10 @@ static bool test_coordinator_death(void) {
             CHECK(r.io == IO_CLOSED);
         }
         uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        fprintf(stderr, "  coordinador con %s: el trabajador lo vio a los "
+                        "%llu ms\n",
+                senales[k] == SIGTERM ? "SIGTERM" : "SIGKILL",
+                (unsigned long long)ms);
         CHECK(ms < MARGEN_MS);
 
         for (uint32_t i = 0; i < 2; i++)

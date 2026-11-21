@@ -81,7 +81,9 @@ PAGES=4
 # ajustar este tope a lo medido habría convertido eso en un fallo falso.
 LIMITE_S=${E2E_LIMIT_S:-120}
 
-TMP=$(mktemp -d) || exit 1
+# Prefijo propio: asi run_tests.sh puede comprobar que no quedo
+# ninguno sin confundirlo con el temporal de otra herramienta.
+TMP=$(mktemp -d /tmp/soa-p3.XXXXXX) || exit 1
 
 coord_pid=''
 worker_pids=''
