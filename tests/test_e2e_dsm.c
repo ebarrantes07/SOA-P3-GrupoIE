@@ -168,7 +168,13 @@ static bool test_coordinator_death_wakes_barrier(void) {
     proc_kill(co.pid);                    /* SIGKILL: no alcanza a avisar */
     CHECK(proc_wait(w[0], WAIT_MS) == 0);
     CHECK(proc_wait(w[1], WAIT_MS) == 0);
-    CHECK((now_monotonic_ns() - t0) / 1000000u < MARGIN_MS);
+    {
+        uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        fprintf(stderr, "  coordinador muerto: los dos nodos en barrera "
+                        "despertaron a los %llu ms\n",
+                (unsigned long long)ms);
+        CHECK(ms < MARGIN_MS);
+    }
     return true;
 }
 
@@ -206,7 +212,12 @@ static bool test_killed_worker_wakes_the_waiter(void) {
     t0 = now_monotonic_ns();
     proc_kill(w[1]);
     CHECK(proc_wait(w[0], WAIT_MS) == 0);
-    CHECK((now_monotonic_ns() - t0) / 1000000u < MARGIN_MS);
+    {
+        uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        fprintf(stderr, "  trabajador muerto con la página: el que esperaba "
+                        "despertó a los %llu ms\n", (unsigned long long)ms);
+        CHECK(ms < MARGIN_MS);
+    }
     CHECK(proc_wait(co.pid, WAIT_MS) != 0);    /* sesión abortada */
     return true;
 }
