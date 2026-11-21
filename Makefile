@@ -37,6 +37,19 @@ PRESENT  := $(patsubst src/%.c,%,$(wildcard $(MAINS)))
 TEST_SRC := $(wildcard tests/test_*.c)
 TEST_BIN := $(patsubst tests/%.c,$(OBJDIR)/%,$(TEST_SRC))
 
+# Las de integración son scripts ejecutables, no binarios que haya que
+# compilar. run_tests.sh los corre igual que a los demás —hace exec de lo que
+# le pasen— así que heredan el límite por prueba, el límite global y el matado
+# por grupo ante una señal, sin duplicar nada de eso.
+#
+# Van DESPUÉS de las unitarias: si un módulo está roto, conviene verlo en su
+# propia prueba antes de verlo como procesos que no se entienden. Y corren
+# igual bajo ASan/UBSan y TSan, porque usan los ejecutables que acabe de
+# construir la compilación instrumentada: eso es lo que cumple el criterio de
+# #6 de que la suite COMPLETA corra bajo los sanitizers.
+E2E_SH   := $(wildcard scripts/e2e_*.sh)
+ALL_TESTS := $(TEST_BIN) $(E2E_SH)
+
 # Límites de tiempo de la suite, en segundos. El enunciado pide un límite
 # GLOBAL, así que hay dos: TEST_TIMEOUT acota cada binario, para poder decir
 # cuál se colgó, y TEST_TOTAL_TIMEOUT acota la corrida completa, que es lo que
@@ -92,11 +105,11 @@ $(OBJDIR):
 # El ciclo vive en scripts/run_tests.sh para poder envolverlo completo en un
 # solo timeout: así el límite es global y no N veces el individual.
 test: all $(TEST_BIN)
-	@if [ -z "$(TEST_BIN)" ]; then \
+	@if [ -z "$(ALL_TESTS)" ]; then \
 		echo "make test: aún no hay pruebas en tests/."; \
 	else \
 		timeout $(TEST_TOTAL_TIMEOUT) \
-		    scripts/run_tests.sh $(TEST_TIMEOUT) $(TEST_BIN); \
+		    scripts/run_tests.sh $(TEST_TIMEOUT) $(ALL_TESTS); \
 		rc=$$?; \
 		if [ $$rc -eq 124 ]; then \
 			echo "make test: TIEMPO GLOBAL AGOTADO tras $(TEST_TOTAL_TIMEOUT)s"; \
