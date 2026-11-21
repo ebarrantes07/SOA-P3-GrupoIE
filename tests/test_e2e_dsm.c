@@ -126,6 +126,7 @@ static bool test_invalidation_acked_while_in_barrier(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(clog);
     CHECK(proc_coord_start(&co, 2, 2, TIMEOUT_MS, clog));
     for (uint32_t i = 0; i < 2; i++)
         w[i] = proc_worker(inval_node, co.port, i, NULL);
@@ -247,6 +248,7 @@ static bool test_logs_correlate_by_node_and_request(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(base);
     CHECK(proc_coord_start(&co, 2, 1, TIMEOUT_MS, base));
     for (uint32_t i = 0; i < 2; i++)
         w[i] = proc_worker(counter_node, co.port, i, base);
@@ -260,6 +262,9 @@ static bool test_logs_correlate_by_node_and_request(void) {
 
     for (uint32_t i = 0; i < 2; i++) {
         snprintf(path, sizeof path, "%s.w%u", base, i);
+        /* Los registros de los trabajadores derivan de `base`, así que no los
+         * cubre el registro de arriba: se anotan donde se conoce su nombre. */
+        test_tmp_keep(path);
         CHECK(csv_load(path, &wl));
         CHECK(strcmp(wl.header, cl.header) == 0);      /* mismo formato */
         for (size_t r = 0; r < wl.n; r++) {

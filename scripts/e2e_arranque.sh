@@ -21,7 +21,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 COORD="$ROOT/dsm_manager"
 APP="$ROOT/app_counter"
 LIMITE_S=${E2E_LIMIT_S:-120}   # ver el comentario de e2e_counter.sh
-TMP=$(mktemp -d) || exit 1
+# Prefijo propio: asi run_tests.sh puede comprobar que no quedo
+# ninguno sin confundirlo con el temporal de otra herramienta.
+TMP=$(mktemp -d /tmp/soa-p3.XXXXXX) || exit 1
 
 fallas=0
 pids=''

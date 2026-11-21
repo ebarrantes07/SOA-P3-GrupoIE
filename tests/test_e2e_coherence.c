@@ -167,6 +167,7 @@ static bool test_three_nodes_two_readers_then_a_writer(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(clog);
     CHECK(proc_coord_start(&co, NODOS, PAGINAS, TIMEOUT_MS, clog));
     /* Los trabajadores no escriben registro propio: todo lo que esta prueba
      * afirma sobre el orden está en el del coordinador, que es el único que ve

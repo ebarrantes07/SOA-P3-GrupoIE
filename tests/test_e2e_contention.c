@@ -37,6 +37,7 @@
  * uint64_t no lleva relleno, el marco sale de calloc y la página mide 4096,
  * múltiplo de 8, así que su inicio sirve para el struct.
  */
+#include "cli.h"
 #include "dsm.h"
 #include "test_csv.h"
 #include "test_proc.h"
@@ -47,10 +48,32 @@
 
 #define NODOS       4u
 #define PAGINAS     1u
-#define RONDAS      1000u      /* por nodo; par, para que la mitad escriba */
 #define PAGINA      0u
 #define TIMEOUT_MS  20000u     /* holgado: acá se mide corrección, no latencia */
 #define WAIT_MS     120000u    /* tope para que un proceso termine */
+
+/* Rondas por nodo. Siempre PAR, porque la mitad escribe y la mitad lee y las
+ * igualdades del final dependen de eso.
+ *
+ * Con la fragmentación forzada de DSM_IO_CHUNK_MAX cada página cuesta miles de
+ * llamadas al sistema: las 1000 rondas pasan de 0,6 s a 18 s con fragmentos de
+ * 7 bytes, y a minutos con 1. Lo que esa variable existe para ejercer es el
+ * CAMINO fragmentado, y cien rondas lo ejercen igual de bien que mil. El valor
+ * del criterio corre en la configuración normal, que es la que lo tiene que
+ * cumplir. Es la misma política que e2e_counter.sh (D5.2).
+ *
+ * Lo lee cada proceso del entorno, así que el padre y los cuatro hijos
+ * obtienen el mismo número sin tener que pasárselo. */
+static uint32_t rondas(void) {
+    const char *s = getenv("DSM_RONDAS");
+    uint32_t v = 0;
+
+    if (s != NULL && cli_parse_u32(s, 2u, 100000u, &v))
+        return v & ~1u;
+    if (getenv("DSM_IO_CHUNK_MAX") != NULL)
+        return 100u;
+    return 1000u;
+}
 
 /* En un hijo: si falla, lo dice por stderr (sin buffer) y termina con 1. */
 #define WCHECK(cond) \
@@ -78,6 +101,7 @@ static bool suma_cuadra(const struct compartido *s) {
 static int contention_node(uint16_t port, uint32_t nid, void *arg) {
     struct dsm_options o = { TIMEOUT_MS, (const char *)arg };
     dsm_ctx *c = DSM_init("127.0.0.1", port, NODOS, nid, &o, NULL);
+    const uint32_t R = rondas();
     uint64_t escrituras = 0, lecturas = 0;
 
     WCHECK(c != NULL);
@@ -87,7 +111,7 @@ static int contention_node(uint16_t port, uint32_t nid, void *arg) {
      * nadie con quien competir, y la prueba mediría otra cosa (D5.1). */
     WCHECK(DSM_barrier(c, 0) == 0);
 
-    for (uint32_t r = 0; r < RONDAS; r++) {
+    for (uint32_t r = 0; r < R; r++) {
         /* La alternancia depende de la ronda Y del nodo, así que en cada
          * momento hay nodos queriendo escribir y nodos queriendo leer. Con
          * `r % 2` solos todos harían lo mismo a la vez y los lectores nunca
@@ -116,21 +140,21 @@ static int contention_node(uint16_t port, uint32_t nid, void *arg) {
 
     {
         const struct compartido *s = DSM_acquire(c, PAGINA, DSM_READ);
-        uint64_t esperado = (uint64_t)NODOS * (RONDAS / 2u);
+        uint64_t esperado = (uint64_t)NODOS * (R / 2u);
 
         WCHECK(s != NULL);
         WCHECK(suma_cuadra(s));
         WCHECK(s->total == esperado);
         for (uint32_t i = 0; i < NODOS; i++)
-            WCHECK(s->aporte[i] == RONDAS / 2u);
+            WCHECK(s->aporte[i] == R / 2u);
         WCHECK(DSM_release(c, PAGINA) == 0);
     }
 
-    WCHECK(escrituras == RONDAS / 2u);
-    WCHECK(lecturas == RONDAS - RONDAS / 2u);
-    fprintf(stderr, "  nodo %lu: %llu escrituras, %llu lecturas\n",
+    WCHECK(escrituras == R / 2u);
+    WCHECK(lecturas == R - R / 2u);
+    fprintf(stderr, "  nodo %lu: %llu escrituras, %llu lecturas de %lu rondas\n",
             (unsigned long)nid, (unsigned long long)escrituras,
-            (unsigned long long)lecturas);
+            (unsigned long long)lecturas, (unsigned long)R);
 
     WCHECK(DSM_finalize(c) == 0);
     return 0;
@@ -178,6 +202,7 @@ static bool test_four_nodes_alternating_for_a_thousand_rounds(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(clog);
     CHECK(proc_coord_start(&co, NODOS, PAGINAS, TIMEOUT_MS, clog));
     for (uint32_t i = 0; i < NODOS; i++)
         w[i] = proc_worker(contention_node, co.port, i, NULL);
