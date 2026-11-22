@@ -88,17 +88,44 @@ if ! { exec 3< "$TMP/puerto"; read -r port <&3; } then
 fi
 exec 3<&-
 
+trabajadores=''
 i=0
 while [ "$i" -lt "$NODOS" ]; do
     timeout "$LIMITE_S" \
         "$APP" --port "$port" --nodes "$NODOS" --id "$i" --iters "$ITERS" \
                > /dev/null 2>> "$TMP/app.err" &
+    trabajadores="$trabajadores $!"
     pids="$pids $!"
     i=$((i + 1))
 done
-wait 2>/dev/null
+
+# Cada proceso se espera por su PID y se le mira el código de salida. Un
+# `wait` pelado los descarta los cuatro, y entonces un trabajador que muere a
+# mitad pero deja un registro PARCIAL se cuela: el verificador lo evalúa
+# igual, y el fallo termina saliendo como "el verificador rechaza una corrida
+# real" —culpando al verificador por algo que se rompió antes— o, peor, pasa.
+#
+# Se escribe `rc=0; wait "$p" || rc=$?` y no `if ! wait "$p"`, porque el $? de
+# una negación es el de la negación: siempre 0. El código real se perdería.
+malos=''
+i=0
+for p in $trabajadores; do
+    rc=0
+    wait "$p" || rc=$?
+    [ "$rc" -eq 0 ] || malos="$malos trabajador-$i($rc)"
+    i=$((i + 1))
+done
+rc=0
+wait "$coord" || rc=$?
+[ "$rc" -eq 0 ] || malos="$malos coordinador($rc)"
 pids=''
 
+if [ -n "$malos" ]; then
+    echo "   FALLO: la corrida real no terminó limpia:$malos"
+    echo "     (124 = lo cortó timeout; 128+n = murió por la señal n)"
+    sed 's/^/     /' "$TMP/coord.err" "$TMP/app.err" 2>/dev/null
+    exit 1
+fi
 if [ ! -s "$real" ]; then
     echo "   FALLO: la corrida no dejó registro"
     sed 's/^/     /' "$TMP/coord.err" "$TMP/app.err" 2>/dev/null
