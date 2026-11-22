@@ -260,6 +260,16 @@ static bool test_logs_correlate_by_node_and_request(void) {
     CHECK(fd >= 0);
     close(fd);
     test_tmp_keep(base);
+    /* Los registros de los trabajadores derivan de `base`, así que sus
+     * nombres ya se conocen acá, y se anotan ANTES de lanzar a nadie.
+     * Anotarlos donde se leen los dejaba atrás cuando un trabajador falla,
+     * porque el CHECK de su espera retorna antes de llegar ahí: un solo fallo
+     * se informaría como dos problemas, que es justo lo que test_tmp_keep
+     * existe para evitar (revisión del PR #17). */
+    for (uint32_t i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s.w%u", base, i);
+        test_tmp_keep(path);
+    }
     CHECK(proc_coord_start(&co, 2, 1, TIMEOUT_MS, base));
     for (uint32_t i = 0; i < 2; i++)
         w[i] = proc_worker(counter_node, co.port, i, base);
@@ -273,9 +283,6 @@ static bool test_logs_correlate_by_node_and_request(void) {
 
     for (uint32_t i = 0; i < 2; i++) {
         snprintf(path, sizeof path, "%s.w%u", base, i);
-        /* Los registros de los trabajadores derivan de `base`, así que no los
-         * cubre el registro de arriba: se anotan donde se conoce su nombre. */
-        test_tmp_keep(path);
         CHECK(csv_load(path, &wl));
         CHECK(strcmp(wl.header, cl.header) == 0);      /* mismo formato */
         for (size_t r = 0; r < wl.n; r++) {

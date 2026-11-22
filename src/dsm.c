@@ -101,10 +101,10 @@
  * respuesta que la habilitó.
  *
  * Existe porque esa ventana es DEMASIADO ANGOSTA para que una prueba la cace
- * de forma confiable. Medido en el #8: el mutante que quita el turno se
- * detecta en 4 de 50 corridas, un 8 %. Con 20 ms acá, en 20 de 20. Un arreglo
- * cuyo mutante sobrevive el 92 % de las veces no está protegido contra que
- * alguien lo borre en un refactor.
+ * de forma confiable. Medido en el #8: el mutante que quita el turno no se
+ * detecta en ninguna de 30 corridas. Con 20 ms acá, en 20 de 20. Un arreglo
+ * cuyo mutante sobrevive siempre no está protegido contra que alguien lo
+ * borre en un refactor.
  *
  * Es el mismo patrón que DSM_IO_CHUNK_MAX en io.c, y por la misma razón: un
  * camino difícil de alcanzar se vuelve alcanzable a pedido. pthread_once
@@ -125,7 +125,7 @@ static void load_turn_delay(void) {
         atomic_store(&turn_delay_us, v);
 }
 
-static void retardo_de_turno(void) {
+static void turn_delay(void) {
     uint32_t us;
 
     pthread_once(&turn_once, load_turn_delay);
@@ -479,7 +479,7 @@ static void *receiver_main(void *arg) {
         /* Acá vive la ventana que el turno protege. Sin inyección no cuesta
          * nada: una lectura atómica y un retorno. */
         if (e.completed)
-            retardo_de_turno();
+            turn_delay();
 
         if (h.type == DSM_WIRE_ERROR) {
             /* Un rechazo repite el request_id y la página de la trama que

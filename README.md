@@ -28,6 +28,12 @@ ejecutable, los errores esperados y ejemplos de ejecución.
 **Objetivo:** GNU/Linux x86-64, GCC y GNU make, C17 con APIs POSIX (sockets TCP y pthreads).
 Compilación con `-std=c17 -Wall -Wextra -Wpedantic -Werror -pthread`.
 
+Los ejecutables no necesitan nada más que la biblioteca C. La suite sí: `make test` corre
+`scripts/e2e_verificador.sh`, que invoca el verificador de invariantes, así que **python3** es
+obligatorio para probar (solo módulos de la biblioteca estándar: no hay nada que instalar con
+pip). `pgrep`, del paquete `procps`, es opcional: si falta, `run_tests.sh` lo avisa y sigue, pero
+deja de comprobar que la suite no haya dejado procesos del programa vivos.
+
 **Probado en:**
 
 | Componente | Versión |
@@ -36,6 +42,8 @@ Compilación con `-std=c17 -Wall -Wextra -Wpedantic -Werror -pthread`.
 | Compilador | GCC 13.3.0 |
 | make | GNU Make 4.3 |
 | Biblioteca C | glibc 2.39 |
+| python3 (solo para las pruebas) | 3.12.3 |
+| pgrep (opcional) | procps-ng 4.0.4 |
 
 ## Compilación
 
