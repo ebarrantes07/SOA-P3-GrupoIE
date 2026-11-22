@@ -1877,3 +1877,115 @@ dos mutantes: el escritor que pide tarde da "al pedir la escritura habia 0 lecto
 0x00)", y el lector que llega tarde también cae.
 
 Una corrida limpia de `make test` no deja ningún proceso ni ningún temporal.
+
+## D6.1 — Las aplicaciones comparten su esqueleto, y π separa los dos errores
+
+- **Fecha:** 2026-11-21
+- **Issue:** [#7](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/7)
+- **Quién decide:** Isaac
+
+### Contexto
+
+Faltaban tres aplicaciones obligatorias: π, lectores/escritor y granularidad. Ninguna agrega
+protocolo; las tres son clientes de `dsm.h` y sirven de verificación independiente del coordinador.
+Tienen la misma forma que `app_counter`: opciones de conexión, `DSM_init`, un trabajo y una
+despedida que se hace siempre.
+
+### Decisión
+
+**Un esqueleto común, `app_common.c`.** Las opciones de conexión, la conexión, el informe de una
+falla del DSM y la despedida se escriben una vez. Cada aplicación aporta solo sus opciones propias,
+mediante una función que el analizador llama con cada par opción-valor que no reconoce, y su
+trabajo. Los códigos de salida son los de D5.1: 0 bien, 1 argumentos, 2 DSM, 3 resultado. Un script
+los lee igual en las cuatro aplicaciones. `app_counter` no se tocó; puede pasar al esqueleto cuando
+convenga.
+
+**La serie y su reparto son un módulo puro, `pi_series.c`.** El reparto por división entera
+balanceada (las primeras T mod N partes reciben un término más) y la suma de un tramo no saben nada
+de red. Así, la cobertura exacta, que es un criterio de todo o nada, se prueba en proceso para
+muchos T y N, incluidos T < N, T primo y T = 2^52, que es el límite donde todo k sigue siendo exacto
+en un `double`.
+
+**π separa los dos errores, y solo uno se califica.**
+
+| | qué mide | con T=100003 |
+|---|---|---|
+| `dif_orden` | \|π distribuido − π secuencial\|: los MISMOS términos agrupados distinto | 0 con N=1; ~6·10⁻¹⁴ con N=2 y 4 |
+| `err_truncamiento` | \|π secuencial − π\|: haber cortado la serie en T términos | 1,0·10⁻⁵ |
+
+El criterio de 1e-9 aplica a la primera. La segunda es unas 10⁸ veces mayor y no depende de N: si
+se confundieran, el criterio sería imposible de cumplir. Cada nodo suma en una variable local y
+publica una sola vez, dentro de un WRITE, en su propia posición de la página 0. El nodo 0 reduce en
+orden de identificador, así que el resultado es reproducible.
+
+### Por qué
+
+Sin el esqueleto común serían cuatro copias del mismo analizador, y una corrección en una no
+llegaría a las otras. Sin el módulo puro, la cobertura solo se vería a través de procesos y para los
+pocos T que una prueba de punta a punta puede costear.
+
+## D6.2 — Cada aplicación tiene su propia forma de fallar a la vista
+
+- **Fecha:** 2026-11-21
+- **Issue:** [#7](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/7)
+- **Quién decide:** Isaac
+
+### Decisión
+
+**Barreras: una posición por nodo con la generación.** En cada una de las G generaciones del mismo
+`barrier_id`, el nodo escribe g en su posición de la página 1, pasa la barrera y lee las de todos.
+Una salida prematura deja ver una posición todavía en g−1. Ver g+1 es legítimo, porque otro nodo
+pudo salir y escribir la siguiente antes de que este leyera. Por eso se acepta g o g+1 y nada más.
+El script exige además N·(G+2) llegadas en el registro del coordinador, así que una barrera que no
+se usó tampoco pasa.
+
+**Lectores/escritor: el patrón cambia en cada byte entre versiones.** El byte i de la versión v es
+`31·i + 151·v + 7` mod 256. De una versión a la siguiente cambia en 151, que no es múltiplo de 256,
+así que **ningún byte** de una copia vieja coincide con la nueva. Un lector que usara su caché
+invalidada fallaría en los 4096 bytes, no en algunos por casualidad. El script exige además, en el
+registro del coordinador, exactamente (N−1)·(V−1) `INVALIDATE` y otros tantos ACK: las copias de los
+lectores se invalidan antes de cada versión nueva, y la primera no invalida nada porque todavía
+nadie tiene copia. La barrera posterior a las lecturas es necesaria: sin ella, un lector lento
+podría leer v+1 donde se verifica v.
+
+**Granularidad: el mismo trabajo, medido y no supuesto.** R rondas con un WRITE y un incremento por
+nodo cada una, coordinadas por una barrera, más una sola lectura de verificación al final. Las
+barreras son coordinación experimental, no trabajo, y se informan por separado
+(`barreras_coordinacion`). El script no confía en ese conteo: lee del registro del coordinador las
+`ACQ_REQ` de modo WRITE y exige N·R en los dos diseños.
+
+| N=4, R=50 | WRITE | INVALIDATE | llegadas a barrera |
+|---|---|---|---|
+| `shared` (una página) | 200 | 194 | 204 |
+| `separate` (una por nodo) | 200 | 0 | 204 |
+
+Con `shared` la verificación final comprueba los N contadores y no solo el propio: que compartir
+página no le haga perder un incremento a nadie es lo que el diseño pone a prueba.
+
+### Por qué
+
+Una aplicación que solo informa un número no prueba nada si nadie la puede hacer fallar. Cada
+decisión de esta entrada existe para que la falla correspondiente se vea: una salida prematura, una
+copia vieja, un trabajo distinto entre diseños.
+
+### Cómo se validó (D6.1 y D6.2)
+
+En Linux x86_64 con GCC 13 (Docker `gcc:13` amd64): `make test` (17 binarios y cuatro scripts) y
+`make test-san` en verde, sin reportes y sin procesos ni temporales al terminar. `e2e_apps.sh`
+también pasa con `DSM_IO_CHUNK_MAX` en 1 y en 7.
+
+Siete mutantes críticos, uno a la vez, y todos detectados:
+
+| mutante | lo detecta |
+|---|---|
+| reparto con solape (sin el `min(idx, extra)`) | `test_pi_series`: la parte no empieza donde termina la anterior |
+| signo de la serie invertido | `test_pi_series`: el término 1 no vale −1/3 |
+| la reducción omite el último nodo | `app_pi` sale con 3: supera la tolerancia |
+| la barrera de generación eliminada | `e2e_apps.sh`: 2 llegadas a barrera de 102 |
+| el lector no espera la barrera posterior | `app_rw` sale distinto de 0 |
+| `separate` escribe todo en la página 0 | `app_granularity` sale con 3 |
+| `shared` con todos en el mismo desplazamiento | `app_granularity` sale con 3 |
+
+Los procesos de `e2e_apps.sh` corren bajo `timeout --foreground` y la limpieza usa TERM, no KILL. Así,
+si el script se interrumpe o se vence el tope global, no queda ningún programa huérfano (ver la
+revisión del #16).
