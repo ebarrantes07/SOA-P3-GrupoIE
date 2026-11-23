@@ -66,22 +66,26 @@ decir() { echo "   $*"; }
 # $TMP/out, el registro del coordinador en $TMP/coord.csv y devuelve 1 si
 # algún proceso no terminó en 0.
 sesion() {
-    n=$1; pages=$2; app=$3; shift 3
-    mal=0
+    # Todo con prefijo s_: en sh las variables son globales, y n, i, rc o p
+    # son los nombres de los bucles que llaman a esta función. Sin el prefijo,
+    # una llamada con un N fijo dentro de `for n in ...` le cambiaría el N al
+    # bucle sin ningún aviso.
+    s_n=$1; s_pages=$2; s_app=$3; shift 3
+    s_mal=0
     rm -f "$TMP/puerto" "$TMP/out" "$TMP/err" "$TMP/coord.csv"
     mkfifo "$TMP/puerto" || return 1
 
     timeout --foreground "$LIMITE_S" \
-        "$COORD" --nodes "$n" --pages "$pages" --port 0 \
+        "$COORD" --nodes "$s_n" --pages "$s_pages" --port 0 \
                  --timeout-ms "$TIMEOUT_MS" --log "$TMP/coord.csv" \
                  > "$TMP/puerto" 2> "$TMP/coord.err" &
-    coord=$!
-    pids="$coord"
+    s_coord=$!
+    pids="$s_coord"
 
     # La lectura del FIFO sincroniza: vuelve cuando el socket ya escucha, o
     # con fin de archivo si el coordinador murió al arrancar.
-    port=''
-    if ! { exec 3< "$TMP/puerto"; read -r port <&3; } then
+    s_port=''
+    if ! { exec 3< "$TMP/puerto"; read -r s_port <&3; } then
         exec 3<&-
         decir "FALLO: el coordinador no publicó un puerto"
         sed 's/^/     /' "$TMP/coord.err"
@@ -89,38 +93,38 @@ sesion() {
     fi
     exec 3<&-
 
-    workers=''
-    i=0
-    while [ "$i" -lt "$n" ]; do
+    s_workers=''
+    s_i=0
+    while [ "$s_i" -lt "$s_n" ]; do
         timeout --foreground "$LIMITE_S" \
-            "$app" --port "$port" --nodes "$n" --id "$i" "$@" \
+            "$s_app" --port "$s_port" --nodes "$s_n" --id "$s_i" "$@" \
                    >> "$TMP/out" 2>> "$TMP/err" &
-        workers="$workers $!"
+        s_workers="$s_workers $!"
         pids="$pids $!"
-        i=$((i + 1))
+        s_i=$((s_i + 1))
     done
 
     # Se esperan todos antes de juzgar, para no esconder fallos detrás del
     # primero. El código se guarda antes de probarlo.
-    for p in $workers; do
-        wait "$p"
-        rc=$?
-        if [ "$rc" -ne 0 ]; then
-            decir "FALLO: un nodo terminó con código $rc"
-            mal=1
+    for s_p in $s_workers; do
+        wait "$s_p"
+        s_rc=$?
+        if [ "$s_rc" -ne 0 ]; then
+            decir "FALLO: un nodo terminó con código $s_rc"
+            s_mal=1
         fi
     done
-    wait "$coord"
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-        decir "FALLO: el coordinador terminó con código $rc"
-        mal=1
+    wait "$s_coord"
+    s_rc=$?
+    if [ "$s_rc" -ne 0 ]; then
+        decir "FALLO: el coordinador terminó con código $s_rc"
+        s_mal=1
     fi
     pids=''
-    if [ "$mal" -ne 0 ]; then
+    if [ "$s_mal" -ne 0 ]; then
         sed 's/^/     /' "$TMP/err" "$TMP/coord.err" 2>/dev/null
     fi
-    return "$mal"
+    return "$s_mal"
 }
 
 # Filas del registro del coordinador con ese evento (y ese modo, si se da).

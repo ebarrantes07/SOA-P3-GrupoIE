@@ -1956,8 +1956,18 @@ barreras son coordinación experimental, no trabajo, y se informan por separado
 
 | N=4, R=50 | WRITE | INVALIDATE | llegadas a barrera |
 |---|---|---|---|
-| `shared` (una página) | 200 | 194 | 204 |
-| `separate` (una por nodo) | 200 | 0 | 204 |
+| `shared` (una página) | 200 | entre 194 y 199 (ocho corridas: 194 ×3, 195, 196, 197 ×2, 198) | 204 |
+| `separate` (una por nodo) | 200 | 0, siempre | 204 |
+
+El número de invalidaciones con `shared` **no es fijo, y no tiene por qué serlo**. Durante el
+trabajo, la única copia ajena que puede existir es la del último escritor, que la conserva al
+liberar. Cada concesión WRITE invalida esa copia, salvo que la pida el mismo nodo que escribió
+justo antes. Dentro de una ronda escriben los N nodos, así que hay N−1 cambios de escritor
+asegurados; entre el último de una ronda y el primero de la siguiente puede repetirse el nodo, y
+eso depende de quién sale antes de la barrera. Por eso el valor queda entre R·(N−1) = 150 y
+N·R − 1 = 199, y en la práctica está cerca del máximo. El script exige solo "distinto de cero" con
+`shared` y "exactamente cero" con `separate`, que es lo que no depende de los tiempos. Las
+adquisiciones WRITE y las llegadas a barrera sí son exactas en todas las corridas.
 
 Con `shared` la verificación final comprueba los N contadores y no solo el propio: que compartir
 página no le haga perder un incremento a nadie es lo que el diseño pone a prueba.
