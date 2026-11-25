@@ -77,6 +77,18 @@ que no coexistan lectores ni copias ajenas con un escritor, que cada concesión 
 después de todos los ACK de invalidación que requería, que las versiones no retrocedan y que un ACK
 repetido no cierre una ronda.
 
+Del mismo registro salen las métricas de una corrida:
+
+```bash
+./scripts/metricas.py registro.csv
+```
+
+Informa mensajes, bytes (con las cabeceras incluidas), páginas transferidas, invalidaciones y
+adquisiciones, separando el tráfico del protocolo de coherencia del de la coordinación
+experimental. Comprueba tres identidades antes de informar —las páginas y las invalidaciones
+derivadas de los eventos contra las columnas acumuladas, y los bytes por grupo contra el total— y
+marca la corrida si alguna no cierra, en vez de dar un número que no se sostiene.
+
 ## Organización del repositorio
 
 ```
