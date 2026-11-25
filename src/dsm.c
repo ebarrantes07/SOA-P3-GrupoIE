@@ -72,6 +72,7 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,6 +80,7 @@
 #include <sys/socket.h>
 #include <time.h>
 
+#include "cli.h"
 #include "clock.h"
 #include "frame.h"
 #include "io.h"
@@ -90,6 +92,52 @@
 /* Nombre del componente en la columna `component` del registro. El
  * coordinador escribe "coordinador"; el nodo se distingue por `node_id`. */
 #define WORKER_COMPONENT "trabajador"
+
+/* ---- Gancho de inyección de fallos: la ventana del turno de registro ----
+ *
+ * Ensancha a propósito el hueco entre que el receptor aplica una respuesta y
+ * que escribe su fila. Es la ventana del turno de registro (D4.1): sin el
+ * turno, la aplicación despierta ahí y su próxima fila se adelanta a la de la
+ * respuesta que la habilitó.
+ *
+ * Existe porque esa ventana es DEMASIADO ANGOSTA para que una prueba la cace
+ * de forma confiable. Medido en el #8: el mutante que quita el turno no se
+ * detecta en ninguna de 30 corridas. Con 20 ms acá, en 20 de 20. Un arreglo
+ * cuyo mutante sobrevive siempre no está protegido contra que alguien lo
+ * borre en un refactor.
+ *
+ * Es el mismo patrón que DSM_IO_CHUNK_MAX en io.c, y por la misma razón: un
+ * camino difícil de alcanzar se vuelve alcanzable a pedido. pthread_once
+ * porque los dos hilos pueden llegar acá a la vez, y atómico porque se lee
+ * desde el receptor mientras el otro hilo corre. */
+#define TURN_DELAY_MAX_US  1000000u
+
+static pthread_once_t   turn_once = PTHREAD_ONCE_INIT;
+static _Atomic uint32_t turn_delay_us = 0;   /* 0 = sin retardo */
+
+static void load_turn_delay(void) {
+    const char *s = getenv("DSM_LOG_TURN_DELAY_US");
+    uint32_t v = 0;
+
+    /* Un valor inválido se ignora en silencio: esto es una biblioteca y no le
+     * corresponde contaminar la salida del programa. */
+    if (s != NULL && cli_parse_u32(s, 1u, TURN_DELAY_MAX_US, &v))
+        atomic_store(&turn_delay_us, v);
+}
+
+static void turn_delay(void) {
+    uint32_t us;
+
+    pthread_once(&turn_once, load_turn_delay);
+    us = atomic_load(&turn_delay_us);
+    if (us == 0u)
+        return;
+    {
+        struct timespec ts = { (time_t)(us / 1000000u),
+                               (long)(us % 1000000u) * 1000L };
+        (void)nanosleep(&ts, NULL);
+    }
+}
 
 /* Generación por barrier_id (D0.8). El enunciado no acota los barrier_id,
  * así que es una lista que crece; las aplicaciones usan uno o dos. */
@@ -427,6 +475,11 @@ static void *receiver_main(void *arg) {
         if (st == DSM_OK && e.completed)
             c->rx_logging = true;
         pthread_mutex_unlock(&c->mu);
+
+        /* Acá vive la ventana que el turno protege. Sin inyección no cuesta
+         * nada: una lectura atómica y un retorno. */
+        if (e.completed)
+            turn_delay();
 
         if (h.type == DSM_WIRE_ERROR) {
             /* Un rechazo repite el request_id y la página de la trama que

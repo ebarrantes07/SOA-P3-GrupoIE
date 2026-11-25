@@ -1878,6 +1878,8 @@ dos mutantes: el escritor que pide tarde da "al pedir la escritura habia 0 lecto
 
 Una corrida limpia de `make test` no deja ningún proceso ni ningún temporal.
 
+---
+
 ## D6.1 — Las aplicaciones comparten su esqueleto, y π separa los dos errores
 
 - **Fecha:** 2026-11-21
@@ -1923,6 +1925,8 @@ orden de identificador, así que el resultado es reproducible.
 Sin el esqueleto común serían cuatro copias del mismo analizador, y una corrección en una no
 llegaría a las otras. Sin el módulo puro, la cobertura solo se vería a través de procesos y para los
 pocos T que una prueba de punta a punta puede costear.
+
+---
 
 ## D6.2 — Cada aplicación tiene su propia forma de fallar a la vista
 
@@ -1999,3 +2003,206 @@ Siete mutantes críticos, uno a la vez, y todos detectados:
 Los procesos de `e2e_apps.sh` corren bajo `timeout --foreground` y la limpieza usa TERM, no KILL. Así,
 si el script se interrumpe o se vence el tope global, no queda ningún programa huérfano (ver la
 revisión del #16).
+
+---
+
+## D7.1 — El verificador reconstruye su propio modelo y no lee el estado del directorio
+
+- **Fecha:** 2026-11-20
+- **Issue:** [#8](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/8)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+Todo lo que se verifica hasta acá es código nuestro comprobando código nuestro. Si el directorio
+tuviera un defecto y las pruebas compartieran el mismo supuesto equivocado, las dos estarían de
+acuerdo y nadie se enteraría. El issue pide romper esa circularidad: *"el script que verifica los
+invariantes sin necesidad de creerle al código"*.
+
+El registro trae las columnas `writer`, `readers`, `readers_mask` e `inval_pending`, que serían el
+camino corto: comparar `writer` contra "a lo sumo uno" y listo.
+
+### Decisión
+
+**El verificador reconstruye su propio modelo del estado a partir de los EVENTOS y no lee esas
+columnas.** Son la *opinión del directorio sobre sí mismo*: si concediera dos escritores a la vez,
+también las escribiría mal, de forma coherente con su propio defecto, y un verificador que las
+leyera confirmaría el error en vez de delatarlo.
+
+Las columnas sí se usan, pero solo para **contrastar**: si el modelo y el directorio no coinciden,
+se avisa. No dice cuál de los dos está mal, pero decirlo es más útil que callarlo. Contra una
+corrida real de tres nodos no hay ningún desacuerdo.
+
+P1 y P2 se comprueban **después de cada evento** y no solo al conceder, que es lo que las vuelve
+invariantes de verdad: tienen que valer en todo momento y no en el instante del grant.
+
+### P5 se cumple estructuralmente, y por eso se demuestra con P3
+
+"Un ACK repetido no cuenta dos veces" no es una comprobación aparte: un ACK de un nodo que no está
+en la ronda simplemente no descuenta. Si el coordinador lo contara, la ronda cerraría antes y el
+grant de WRITE llegaría con invalidaciones abiertas, que es P3.
+
+De ahí que la alteración `ack_repetido_cierra` se espere como violación de **P3** y no de P5, con
+la nota que nombra el ACK repetido. Si se contara dos veces, ese registro pasaría.
+
+### Cómo se validó
+
+Un verificador que nunca vio un registro malo no es un verificador, es un lector de archivos.
+`mutar_registro.py` altera un registro real con seis cambios mínimos, cada uno nombrado por la
+propiedad que rompe, y renumera `seq` para que la única anomalía sea la semántica introducida y no
+un salto de numeración que el verificador delataría por otro motivo.
+
+| alteración | delata |
+|---|---|
+| `dos_escritores` | P1 |
+| `publica_ajeno` | P1 |
+| `lector_con_escritor` | P2 |
+| `grant_sin_ack` | P3 |
+| `version_retrocede` | P4 |
+| `ack_repetido_cierra` | P3, con la nota del ACK repetido |
+
+`e2e_verificador.sh` exige la propiedad **correcta** y no solo que falle: sin eso, un verificador
+que rechazara todo dejaría la prueba verde. Y comprueba tres cosas que tiene que negarse a leer: un
+archivo vacío, uno inexistente, y un registro de trabajador, que no ve el estado de las páginas y
+daría un "todo bien" sin significado.
+
+El material sobre el que corre importa tanto como el script. El registro del contador casi no tiene
+lectores, así que P2 y P3 no se ejercían en una corrida que pasa. La prueba de competencia —cuatro
+nodos alternando lecturas y escrituras— produce 23 542 filas con hasta **4 lectores simultáneos** y
+**7430 rondas de invalidación**, con hasta 3 ACK pendientes a la vez.
+
+---
+
+## D7.2 — Inyección de fallos: lo que una prueba no alcanza por sí sola
+
+- **Fecha:** 2026-11-20
+- **Issue:** [#8](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/8)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+Tres cosas del criterio se venían corriendo a mano: la fragmentación con una variable de entorno
+que había que recordar, la comprobación de que no quedaran procesos vivos, y nada que cubriera una
+ventana de concurrencia demasiado angosta para que una prueba la alcance sola.
+
+### `make test-robustez`: la suite repetida con fallos inyectados
+
+Siete pasadas, una por tamaño de fragmento de 1 a 7 bytes, más la del retardo del turno. 121
+segundos en total. Va aparte de `make test` porque cuesta minutos y no segundos: con fragmentos de
+1 byte una página de 4096 cruza en miles de pedazos.
+
+Las pruebas que mueven volumen **bajan su tamaño** cuando detectan `DSM_IO_CHUNK_MAX` —la de
+competencia pasa de 1000 rondas a 100, el contador de K=1000 a K=20—. Lo que esa variable ejerce es
+el **camino** fragmentado y no el volumen, y cien rondas lo ejercen igual de bien que mil. El valor
+del criterio corre en la configuración normal, que es la que lo tiene que cumplir. Medido: la
+competencia pasa de 0,6 s a 17,8 s con fragmentos de 7 bytes, y a minutos con 1.
+
+### El gancho de retardo: un arreglo cuyo mutante sobrevive no está protegido
+
+El turno de registro de D4.1 estaba cubierto por una prueba que detectaba su ausencia en 4 de 50
+corridas. Vuelto a medir en este issue, peor: **0 de 30**. La ventana es demasiado angosta, y un
+arreglo cuyo mutante sobrevive siempre no está protegido contra que alguien lo borre en un
+refactor.
+
+`DSM_LOG_TURN_DELAY_US` la ensancha a pedido, con el mismo patrón que `DSM_IO_CHUNK_MAX` en `io.c`:
+leído del entorno una vez con `pthread_once`, guardado en un atómico, y sin costo cuando vale cero.
+Con 20 ms el mutante muere **20 de 20**, y el original pasa 20 de 20 sin falsos positivos.
+
+Esa pasada corre **solo** `test_dsm`, y la razón vale escribirla porque el primer intento fue al
+revés: el retardo se aplica a cada respuesta, así que en una prueba de volumen —4000 operaciones
+por nodo— son 80 s de espera pura contra un plazo de operación de 20 s. La suite entera falla por
+plazo vencido, y ahí se estaría midiendo el plazo y no el turno.
+
+### Que la suite compruebe sola que no deja nada vivo
+
+El criterio *"no queda ningún proceso vivo ni recurso tomado"* se comprobaba a mano cada vez. Y dos
+defectos de esa familia los encontró una persona leyendo, no la suite: un `sleep` huérfano del
+guardián del punta a punta, y una prueba que al fallar dejaba vivos a los procesos que no había
+esperado.
+
+`run_tests.sh` toma una **foto** de procesos y temporales antes de la suite y la compara después.
+Lo importante es que compara y no solo mira: un `dsm_manager` que el operador tenga corriendo a
+mano no cuenta como fuga, porque estaba antes. Los scripts usan un prefijo propio
+(`/tmp/soa-p3.*`) para que un temporal ajeno no se confunda con uno nuestro. Si no hay `pgrep`, lo
+dice y no afirma que el chequeo pasó.
+
+**Encontró algo en su primera corrida.** Las pruebas que crean un temporal con `mkstemp` lo borran
+al final, lo que en C significa "solo si no falla": `CHECK` retorna antes del `unlink`. Ahora que el
+chequeo existe eso dejó de ser cosmético: un fallo se informaría como dos problemas —la prueba que
+falló y una fuga— y el segundo taparía al primero. `test_util.h` gana `test_tmp_keep`: quien crea el
+temporal lo registra y se olvida, y se borra al terminar el proceso haya pasado o fallado.
+
+### Las caídas, medidas y no solo acotadas
+
+Las pruebas de desconexión comparaban el tiempo contra una cota sin informarlo. Ahora lo imprimen,
+así la evidencia del criterio aparece en cada corrida en vez de vivir en un comentario:
+
+| situación | detectado a los |
+|---|---|
+| trabajador muerto, visto por el coordinador | 0 ms |
+| trabajador muerto con la página, el que esperaba | 2 ms |
+| coordinador con `SIGKILL`, nodos en barrera | 2 ms |
+| coordinador con `SIGTERM` o `SIGKILL`, visto por el trabajador | 0 ms |
+| nodo vivo pero mudo | 400 ms, con plazo de 400 |
+| registro incompleto | 400 ms, con plazo de 400 |
+
+El criterio concede el plazo configurado más 2 segundos de limpieza. Las dos situaciones que
+dependen del plazo lo cumplen al milisegundo, y las cuatro que cierran un socket no esperan nada.
+
+---
+
+## D7.3 — Lo que no se pudo verificar con la herramienta prevista
+
+- **Fecha:** 2026-11-20
+- **Issue:** [#8](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/8)
+- **Quién decide:** ambos
+
+### Contexto
+
+Un criterio del issue pide algo que no es sobre el código: *"si una herramienta no funciona en el
+entorno, se registra el diagnóstico y se presenta una verificación alternativa, sin afirmar que
+pasó"*. Los casos aparecieron repartidos por el proyecto; esta entrada los junta, porque lo que
+hace útil al registro es que estén en un solo lugar y que cada uno diga qué quedó **sin** cubrir.
+
+### ThreadSanitizer no arranca bajo la emulación amd64 de macOS
+
+- **Diagnóstico:** falla al iniciar con "unexpected memory mapping". No es que reporte algo: no
+  llega a correr.
+- **Alternativa:** se corrió en Linux x86_64 nativo (WSL2), donde pasa la suite completa sin un
+  solo reporte. Con dos hilos por contexto en `libdsm`, es la verificación que más importa de ese
+  módulo, así que se acordó que quien tenga Linux la corra antes de cada aprobación.
+- **Sin cubrir:** nadie corrió TSan sobre macOS nativo. No se afirma que ahí pase.
+
+### No hay `strace` en este WSL
+
+- **Diagnóstico:** el paquete no está disponible, así que no se pudo observar la secuencia de
+  llamadas al sistema para comprobar que cada trama saliera en una sola escritura (D1.6).
+- **Alternativa:** un shim de `LD_PRELOAD` que interpone `send` y las cuenta. Midió 2 llamadas
+  antes del cambio —una de 32 bytes y otra de 4104— y 1 de 4136 después.
+- **Sin cubrir:** el shim cuenta las llamadas que hace *nuestro* código al pasar por el enlazador
+  dinámico. No ve lo que libc haga por dentro, así que no es un sustituto de observar los syscalls.
+
+### LeakSanitizer no corre después de `_exit`
+
+- **Diagnóstico:** medido con un programa aislado que pierde memoria a propósito: con `exit`
+  informa la fuga y termina en 1; con `_exit` no informa nada y termina en 0. Los trabajadores que
+  las pruebas de punta a punta lanzan con `fork` terminan con `_exit` —a propósito, para no vaciar
+  los buffers heredados del padre— así que **sus fugas no se chequean**.
+- **Alternativa:** el mismo código corre en proceso en otras pruebas, donde LeakSanitizer sí
+  actúa: `test_dsm` ejerce `libdsm` completa contra un coordinador falso, y `test_manager` ejerce
+  el coordinador sin sockets. Comprobado inyectando una fuga real —quitar el `free` del arreglo de
+  generaciones de barrera— que `make test-san` cazó con 8 reportes, nombrando 192 bytes en 3
+  objetos.
+- **Sin cubrir:** una fuga que solo ocurriera en el camino multiproceso y en ningún otro. No se
+  conoce ninguna, porque el código es el mismo y lo único que cambia son los sockets reales.
+
+### Dos mediciones que no se pudieron explicar
+
+- **Diagnóstico:** durante el #6 se midieron dos corridas del punta a punta de 67 s, contra un
+  costo habitual de 3 a 6 s. No se reprodujeron en nueve intentos posteriores, no quedaban procesos
+  acaparando procesador y la carga estaba baja. Lo más probable es carga del anfitrión Windows, que
+  desde WSL2 no se ve.
+- **Consecuencia de diseño, que es lo que importa:** los topes de los scripts tienen margen de
+  sobra (120 s sobre un costo de 3 a 6 s) en vez de estar ajustados a lo medido. Ajustarlos habría
+  convertido una anomalía del entorno en un fallo falso.
+- **Sin cubrir:** la causa. Queda anotada para no volver a perseguirla desde cero si reaparece.

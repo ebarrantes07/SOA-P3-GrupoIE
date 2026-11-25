@@ -126,6 +126,7 @@ static bool test_invalidation_acked_while_in_barrier(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(clog);
     CHECK(proc_coord_start(&co, 2, 2, TIMEOUT_MS, clog));
     for (uint32_t i = 0; i < 2; i++)
         w[i] = proc_worker(inval_node, co.port, i, NULL);
@@ -167,7 +168,13 @@ static bool test_coordinator_death_wakes_barrier(void) {
     proc_kill(co.pid);                    /* SIGKILL: no alcanza a avisar */
     CHECK(proc_wait(w[0], WAIT_MS) == 0);
     CHECK(proc_wait(w[1], WAIT_MS) == 0);
-    CHECK((now_monotonic_ns() - t0) / 1000000u < MARGIN_MS);
+    {
+        uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        fprintf(stderr, "  coordinador muerto: los dos nodos en barrera "
+                        "despertaron a los %llu ms\n",
+                (unsigned long long)ms);
+        CHECK(ms < MARGIN_MS);
+    }
     return true;
 }
 
@@ -205,7 +212,12 @@ static bool test_killed_worker_wakes_the_waiter(void) {
     t0 = now_monotonic_ns();
     proc_kill(w[1]);
     CHECK(proc_wait(w[0], WAIT_MS) == 0);
-    CHECK((now_monotonic_ns() - t0) / 1000000u < MARGIN_MS);
+    {
+        uint64_t ms = (now_monotonic_ns() - t0) / 1000000u;
+        fprintf(stderr, "  trabajador muerto con la página: el que esperaba "
+                        "despertó a los %llu ms\n", (unsigned long long)ms);
+        CHECK(ms < MARGIN_MS);
+    }
     CHECK(proc_wait(co.pid, WAIT_MS) != 0);    /* sesión abortada */
     return true;
 }
@@ -247,6 +259,17 @@ static bool test_logs_correlate_by_node_and_request(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(base);
+    /* Los registros de los trabajadores derivan de `base`, así que sus
+     * nombres ya se conocen acá, y se anotan ANTES de lanzar a nadie.
+     * Anotarlos donde se leen los dejaba atrás cuando un trabajador falla,
+     * porque el CHECK de su espera retorna antes de llegar ahí: un solo fallo
+     * se informaría como dos problemas, que es justo lo que test_tmp_keep
+     * existe para evitar (revisión del PR #17). */
+    for (uint32_t i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s.w%u", base, i);
+        test_tmp_keep(path);
+    }
     CHECK(proc_coord_start(&co, 2, 1, TIMEOUT_MS, base));
     for (uint32_t i = 0; i < 2; i++)
         w[i] = proc_worker(counter_node, co.port, i, base);

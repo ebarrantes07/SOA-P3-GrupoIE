@@ -1010,6 +1010,7 @@ static bool test_log_records_events_with_correlation(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(path);
 
     CHECK(fake_start(&f, script_logged));
     c = app_init(&f, 2, 1, APP_TIMEOUT_MS, path, NULL);
@@ -1101,6 +1102,7 @@ static bool test_error_row_carries_the_rejected_request(void) {
 
     CHECK(fd >= 0);
     close(fd);
+    test_tmp_keep(path);
     CHECK(fake_start(&f, script_reject_acquire));
     c = app_init(&f, 2, 0, APP_TIMEOUT_MS, path, NULL);
     CHECK(c != NULL);

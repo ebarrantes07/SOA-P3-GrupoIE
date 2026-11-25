@@ -24,7 +24,9 @@ PI="$ROOT/app_pi"
 RW="$ROOT/app_rw"
 GRAN="$ROOT/app_granularity"
 LIMITE_S=${E2E_LIMIT_S:-120}   # ver el comentario de e2e_counter.sh
-TMP=$(mktemp -d) || exit 1
+# Prefijo propio: asi run_tests.sh puede comprobar que no quedo
+# ninguno sin confundirlo con el temporal de otra herramienta.
+TMP=$(mktemp -d /tmp/soa-p3.XXXXXX) || exit 1
 
 fallas=0
 pids=''

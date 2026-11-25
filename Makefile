@@ -77,7 +77,7 @@ SANENV  := ASAN_OPTIONS=detect_leaks=1 \
            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
 TSANENV := TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
 
-.PHONY: all test test-san test-tsan clean
+.PHONY: all test test-san test-tsan test-robustez clean
 
 # Sin esto make trata los .o como intermedios de las reglas de patrón y los
 # borra al final de cada invocación, así que cada `make test` recompilaría
@@ -137,6 +137,40 @@ test-tsan:
 	    CFLAGS="$(CFLAGS) $(TSANFLAGS)" \
 	    LDFLAGS="$(LDFLAGS) $(TSANFLAGS)"; \
 	  rc=$$?; $(MAKE) clean; exit $$rc
+
+# ---- Robustez: la suite repetida con fallos inyectados (#8) ------------
+#
+# Dos clases de inyección, en pasadas separadas para que un fallo diga cuál la
+# provocó:
+#
+#   - FRAGMENTACION, los siete tamaños del criterio. DSM_IO_CHUNK_MAX recorta
+#     cada send() y cada recv() a ese máximo, así que una página de 4096 bytes
+#     cruza en miles de pedazos y cualquier supuesto de "llegó entero" se
+#     rompe. Los resultados funcionales tienen que ser los mismos.
+#   - RETARDO DEL TURNO DE REGISTRO, que ensancha una ventana de concurrencia
+#     demasiado angosta para que una prueba la alcance sola. Sin él, el
+#     mutante que quita el turno se detecta en 0 de 30 corridas; con él, en
+#     20 de 20.
+#
+# Va aparte de `make test` porque cuesta minutos y no segundos: la
+# fragmentación multiplica las llamadas al sistema por mil. Las pruebas que
+# mueven volumen bajan su tamaño cuando detectan DSM_IO_CHUNK_MAX, para
+# ejercer el CAMINO fragmentado sin multiplicar el trabajo (D5.2).
+test-robustez: all $(TEST_BIN)
+	@rc=0; \
+	for n in 1 2 3 4 5 6 7; do \
+		echo "===== fragmentos de $$n byte(s) ====="; \
+		DSM_IO_CHUNK_MAX=$$n $(MAKE) --no-print-directory -s test || rc=1; \
+	done; \
+	echo "===== retardo en la ventana del turno de registro ====="; \
+	DSM_LOG_TURN_DELAY_US=20000 timeout $(TEST_TIMEOUT) ./build/test_dsm \
+		|| rc=1; \
+	if [ $$rc -ne 0 ]; then \
+		echo "make test-robustez: alguna pasada falló"; \
+	else \
+		echo "make test-robustez: las 8 pasadas pasaron"; \
+	fi; \
+	exit $$rc
 
 clean:
 	rm -rf $(OBJDIR) $(BINS)
