@@ -100,6 +100,17 @@ de cada métrica, tomando el tráfico del registro de cada corrida. Ninguna corr
 silencio: una que no terminó en 0, o cuyo tráfico no cuadra, sale de las estadísticas pero se
 informa con su nombre y su motivo.
 
+Y de ese resumen salen las figuras del informe:
+
+```bash
+./scripts/analisis.py --json results/ | ./scripts/graficas.py --out results/
+```
+
+Tres SVG, uno por experimento: localidad de lectura, falso compartimiento y costo de
+distribución. Sin dependencias —los scripts siguen usando solo la biblioteca estándar— y con la
+desviación dibujada sobre cada marca. Si a los datos les falta una métrica, la figura no se
+dibuja y se dice cuál faltó.
+
 ## Organización del repositorio
 
 ```

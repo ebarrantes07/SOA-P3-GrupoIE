@@ -156,6 +156,7 @@ def metricas(ruta):
         "msgs_out": int(ult["msgs_out"]),
         "bytes_in": int(ult["bytes_in"]),
         "bytes_out": int(ult["bytes_out"]),
+        "msgs_total": int(ult["msgs_in"]) + int(ult["msgs_out"]),
         "bytes_total": int(ult["bytes_in"]) + int(ult["bytes_out"]),
         "page_xfers": int(ult["page_xfers"]),
         "invals": int(ult["invals"]),

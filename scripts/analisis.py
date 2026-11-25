@@ -146,7 +146,8 @@ def metricas_de(c):
         m["nodo_max." + k] = max(vs)
     tr = c.get("_trafico")
     if tr:
-        for k in ("msgs_in", "msgs_out", "bytes_in", "bytes_out", "bytes_total",
+        for k in ("msgs_in", "msgs_out", "msgs_total", "bytes_in", "bytes_out",
+                  "bytes_total",
                   "page_xfers", "invals", "grants_con_pagina",
                   "grants_sin_pagina", "filas"):
             m["red." + k] = float(tr[k])
