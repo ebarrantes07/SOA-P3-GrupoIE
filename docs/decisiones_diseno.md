@@ -2206,3 +2206,86 @@ hace útil al registro es que estén en un solo lugar y que cada uno diga qué q
   sobra (120 s sobre un costo de 3 a 6 s) en vez de estar ajustados a lo medido. Ajustarlos habría
   convertido una anomalía del entorno en un fallo falso.
 - **Sin cubrir:** la causa. Queda anotada para no volver a perseguirla desde cero si reaparece.
+
+---
+
+## D8.1 — El lanzador de la matriz: calentamiento declarado, fallos que no la detienen
+
+- **Fecha:** 2026-11-25
+- **Issue:** [#9](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/9)
+- **Quién decide:** Isaac
+
+### Contexto
+
+#9 se repartió por costura: esta mitad produce las corridas (la opción de localidad en `app_rw` y
+`scripts/experimento.py`), y la de D8.2 las mide y las analiza. El contrato entre las dos es un par
+de archivos por corrida, `results/<experimento>/<config>_r<n>.json` con lo que imprimió cada nodo y
+`.csv` con el registro del coordinador de esa corrida. El lanzador no calcula ninguna métrica de
+tráfico.
+
+### Decisión
+
+**Localidad en `app_rw`, con `--reads M --access batch|repeated`.** El escritor publica una sola
+versión y cada lector hace M lecturas de la página entera, todas en un mismo intervalo READ o una
+adquisición por lectura. Cada lectura verifica los 4096 bytes, así que medir no relaja la
+comprobación. La aplicación informa lo único que el registro del coordinador no ve:
+`accesos_locales` y `adquisiciones`.
+
+| N=2, 64 lecturas | adquisiciones | mensajes | páginas en concesiones | bytes |
+|---|---|---|---|---|
+| `lote` | 1 | 22 | 2 | 13 160 |
+| `repetido` | 64 | 274 | 2 | 22 232 |
+
+Esa es la respuesta del experimento: con `repetido` la copia en caché sigue vigente, así que cada
+concesión llega **sin** la página. Crecen los mensajes de control (×12) y los bytes solo por las
+cabeceras (×1,7); la transferencia de datos no se mueve.
+
+**Una corrida de calentamiento por configuración, descartada y declarada.** En las mediciones de
+D8.2, la primera corrida después de compilar llegó a medir la mitad que las siguientes. Descartarla
+en silencio violaría el criterio de #9, así que se guarda como texto en
+`results/<experimento>/calentamiento/<config>.txt`, con sus códigos y su salida, y cada JSON medido
+la nombra en `calentamiento_descartado`. No es `.json`, de modo que el análisis no la levanta.
+
+**Una corrida que falla no detiene la matriz.** Queda escrita con sus códigos de salida y los
+errores, el análisis la excluye con su motivo, y al final el lanzador lista todas las fallidas y
+sale con 1. Hubo que resolver un caso en particular: si los nodos mueren antes de conectarse, el
+coordinador espera indefinidamente a propósito (D3.5). El lanzador le da a lo sumo un plazo más 5 s
+después de que salió el último nodo, y si no cerró lo mata y lo registra. Con un `app_rw` que sale
+con 3, la matriz mínima terminó en 57 s con las cuatro corridas de localidad marcadas como fallidas
+y las demás medidas. Antes de este cambio, cada corrida fallida costaba los 300 s del tope.
+
+**Cada proceso en su propio grupo, y nada vivo al salir.** Así, al vencer el tope se mata el grupo
+entero. Como eso los saca del grupo del lanzador, un `finally` mata lo que quede vivo, y SIGTERM se
+convierte en una salida normal para que ese `finally` corra. Con un TERM a mitad de la matriz no
+quedó ningún proceso.
+
+**Distribución con `--barriers 0`.** Las 100 generaciones de barrera de `app_pi` son una prueba de
+corrección (D6.2), no parte del costo de calcular π, y entrarían en `t_total_ms`.
+
+**La matriz** es la que propone el reparto de #9, con el T grande de D8.2:
+
+| experimento | configuraciones | corridas medidas |
+|---|---|---|
+| localidad | modo ∈ {lote, repetido} × lecturas ∈ {1, 8, 64}, N=2 | 6 × 5 = 30 |
+| false sharing | N ∈ {2, 4} × diseño ∈ {shared, separate}, R=50 | 4 × 5 = 20 |
+| distribución | N ∈ {1, 2, 4} × T ∈ {100 003, 200 000 003} | 6 × 5 = 30 |
+
+Son 80 corridas medidas y 16 de calentamiento. El entorno (`uname`, CPU, `nproc`, `gcc`, glibc,
+Python) se captura una vez y va en cada JSON, porque el análisis exige que sea el mismo en todas
+las repeticiones de una configuración.
+
+### Cómo se validó
+
+- `e2e_experimento.sh`, en `make test`, corre la matriz mínima (`--rapido`, 2 repeticiones) y
+  comprueba el contrato sin depender del análisis:
+  - un JSON y un CSV por corrida;
+  - todos los campos y los códigos de salida en 0;
+  - el registro con su encabezado;
+  - un calentamiento por configuración, que no es `.json`;
+  - en localidad, que el lector informe M accesos locales con 1 o M adquisiciones según el modo.
+- La matriz completa en Docker `gcc:13` amd64: 96 corridas en 21 s, todas en 0. Con el
+  `analisis.py` y el `graficas.py` de D8.2: las 16 configuraciones con n=5, ninguna descartada, y
+  las tres figuras dibujadas.
+- Dos fallas a propósito: un `app_rw` que sale con 3 (ver arriba) y un TERM a mitad de la matriz.
+- Estos números son de emulación amd64 sobre una Mac y valen para la corrección del lanzador. Los
+  tiempos del informe salen de la corrida en WSL2 (reparto de #9).
