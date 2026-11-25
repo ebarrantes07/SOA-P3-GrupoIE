@@ -16,6 +16,22 @@
  * lento podría adquirir cuando el escritor ya publicó v+1, y lo que se
  * verifica es que cada lector vea CADA versión.
  *
+ * LOCALIDAD DE LECTURA (#9), con --reads M. El escritor publica una sola
+ * versión y cada lector hace M lecturas de la página entera, de una de dos
+ * formas:
+ *
+ *   --access batch      un solo intervalo READ con las M lecturas adentro
+ *   --access repeated   M intervalos, una adquisición por lectura
+ *
+ * El trabajo de lectura es idéntico; lo único que cambia es cuántas veces se
+ * le pide permiso al coordinador. Con `repeated` la copia en caché sigue
+ * vigente, así que cada concesión llega SIN la página: crecen los mensajes de
+ * control, pero no la transferencia de datos. Separar esas dos cosas es lo que
+ * pide el experimento. La aplicación informa lo único que el registro del
+ * coordinador no ve: cuántos accesos locales hizo y cuántas adquisiciones
+ * pidió. Cada lectura verifica los 4096 bytes, así que medir no relaja la
+ * comprobación.
+ *
  * Disposición de la página:
  *   bytes 0..7      uint64_t version
  *   bytes 8..4095   pattern(version, i)
@@ -25,6 +41,7 @@
 
 #include "app_common.h"
 #include "cli.h"
+#include "clock.h"
 
 #define WRITER 0u
 
@@ -33,9 +50,13 @@
 
 #define HEADER sizeof(uint64_t)
 
+enum access { ACCESS_BATCH, ACCESS_REPEATED };
+
 struct rw_opts {
-    uint32_t versions;
-    uint32_t page;
+    uint32_t    versions;
+    uint32_t    page;
+    uint32_t    reads;      /* 0 = experimento de versiones, no de localidad */
+    enum access access;
 };
 
 static enum app_opt rw_opt(const char *flag, const char *v, void *arg) {
@@ -47,12 +68,27 @@ static enum app_opt rw_opt(const char *flag, const char *v, void *arg) {
     if (strcmp(flag, "--page") == 0)
         return cli_parse_u32(v, 0, DSM_MAX_PAGES - 1u, &o->page)
                    ? APP_OPT_TAKEN : APP_OPT_INVALID;
+    if (strcmp(flag, "--reads") == 0)
+        return cli_parse_u32(v, 1, 1000000u, &o->reads)
+                   ? APP_OPT_TAKEN : APP_OPT_INVALID;
+    if (strcmp(flag, "--access") == 0) {
+        if (strcmp(v, "batch") == 0)
+            o->access = ACCESS_BATCH;
+        else if (strcmp(v, "repeated") == 0)
+            o->access = ACCESS_REPEATED;
+        else
+            return APP_OPT_INVALID;
+        return APP_OPT_TAKEN;
+    }
     return APP_OPT_UNKNOWN;
 }
 
 static const char USAGE[] =
     "  --versions V       versiones que publica el escritor (por omisión 2)\n"
-    "  --page P           página que se usa (por omisión 0)\n";
+    "  --page P           página que se usa (por omisión 0)\n"
+    "  --reads M          localidad: M lecturas por lector, una sola versión\n"
+    "  --access A         localidad: batch (un intervalo) o repeated (uno por\n"
+    "                     lectura); por omisión batch\n";
 
 /* Byte i del patrón de la versión v. De v a v+1 cada byte cambia en 151, que
  * no es múltiplo de 256: no hay un solo byte igual entre dos versiones
@@ -120,9 +156,74 @@ static int read_version(dsm_ctx *ctx, uint32_t nid, uint32_t page,
     return APP_EXIT_OK;
 }
 
+/* Localidad: M lecturas verificadas de la versión 1, en un intervalo o en M.
+ * Deja en *acquires las adquisiciones pedidas y en *ms el tiempo de la fase. */
+static int read_locality(dsm_ctx *ctx, uint32_t nid, const struct rw_opts *o,
+                         uint64_t *acquires, double *ms) {
+    const unsigned char *p = NULL;
+    uint64_t t0 = now_monotonic_ns();
+
+    *acquires = 0;
+    for (uint32_t r = 0; r < o->reads; r++) {
+        if (p == NULL) {
+            p = DSM_acquire(ctx, o->page, DSM_READ);
+            if (p == NULL)
+                return app_fail(ctx, nid, "no se pudo adquirir para leer");
+            (*acquires)++;
+        }
+        /* La lectura: la página entera, contra el patrón. Es un acceso local,
+         * sin red, mientras el permiso siga vigente. */
+        if (mismatches(p, 1u) != 0) {
+            fprintf(stderr, "nodo %lu: FALLO: la lectura %lu no vio la "
+                            "versión 1\n", (unsigned long)nid,
+                    (unsigned long)r);
+            (void)DSM_release(ctx, o->page);
+            return APP_EXIT_RESULT;
+        }
+        if (o->access == ACCESS_REPEATED || r + 1u == o->reads) {
+            if (DSM_release(ctx, o->page) != 0)
+                return app_fail(ctx, nid, "no se pudo liberar la lectura");
+            p = NULL;
+        }
+    }
+    *ms = app_ms(t0, now_monotonic_ns());
+    return APP_EXIT_OK;
+}
+
+/* El experimento de localidad completo, para cualquier nodo. */
+static int run_locality(dsm_ctx *ctx, uint32_t nid, const struct rw_opts *o) {
+    uint64_t acquires = 0;
+    double ms = 0.0;
+    int rc = APP_EXIT_OK;
+
+    if (nid == WRITER) {
+        rc = write_version(ctx, o->page, 1u);
+        acquires = 1;
+    }
+    if (rc != APP_EXIT_OK)
+        return rc;
+    if (DSM_barrier(ctx, BARRIER_PUBLISHED) != 0)
+        return app_fail(ctx, nid, "barrera de publicación");
+    if (nid != WRITER)
+        rc = read_locality(ctx, nid, o, &acquires, &ms);
+    if (rc != APP_EXIT_OK)
+        return rc;
+    if (DSM_barrier(ctx, BARRIER_READ) != 0)
+        return app_fail(ctx, nid, "barrera de lectura");
+
+    printf("rw: nodo=%lu rol=%s modo=%s lecturas=%lu accesos_locales=%lu "
+           "adquisiciones=%llu t_lectura_ms=%.3f\n", (unsigned long)nid,
+           nid == WRITER ? "escritor" : "lector",
+           o->access == ACCESS_BATCH ? "lote" : "repetido",
+           (unsigned long)o->reads,
+           (unsigned long)(nid == WRITER ? 0u : o->reads),
+           (unsigned long long)acquires, ms);
+    return APP_EXIT_OK;
+}
+
 int main(int argc, char **argv) {
     struct app_conn c;
-    struct rw_opts o = { 2u, 0u };
+    struct rw_opts o = { 2u, 0u, 0u, ACCESS_BATCH };
     dsm_ctx *ctx;
     int rc = APP_EXIT_OK;
     uint64_t v;
@@ -141,6 +242,11 @@ int main(int argc, char **argv) {
                         "%lu\n", (unsigned long)c.nid, (unsigned long)o.page,
                 (unsigned long)DSM_page_count(ctx));
         return app_finish(ctx, c.nid, APP_EXIT_ARGS);
+    }
+
+    if (o.reads > 0) {
+        rc = run_locality(ctx, c.nid, &o);
+        return app_finish(ctx, c.nid, rc);
     }
 
     for (v = 1; v <= o.versions && rc == APP_EXIT_OK; v++) {
