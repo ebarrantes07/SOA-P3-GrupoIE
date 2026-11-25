@@ -20,6 +20,9 @@ set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 COORD="$ROOT/dsm_manager"
 APP="$ROOT/app_counter"
+PI="$ROOT/app_pi"
+RW="$ROOT/app_rw"
+GRAN="$ROOT/app_granularity"
 LIMITE_S=${E2E_LIMIT_S:-120}   # ver el comentario de e2e_counter.sh
 TMP=$(mktemp -d) || exit 1
 
@@ -83,16 +86,49 @@ coord_arranca() {
     return 0
 }
 
+# Más estricto que `rechaza`: exige el código 1 de las aplicaciones
+# (argumentos inválidos, D5.1). Con `rechaza` alcanzaría cualquier código
+# distinto de cero, y un analizador roto que dejara pasar la opción y se
+# pusiera a conectar al puerto 9 saldría con 2 (falló el DSM) y pasaría igual.
+# El 1 es lo que prueba que se rechazó ANTES de abrir un socket.
+rechaza_args() {
+    desc=$1
+    shift
+    rc=0
+    timeout 10 "$@" > "$TMP/out" 2>&1 || rc=$?
+    if [ "$rc" -eq 1 ]; then
+        echo "   OK (1): $desc"
+    else
+        echo "   FALLO: $desc: salió con $rc y debía salir con 1"
+        sed 's/^/     /' "$TMP/out"
+        fallas=$((fallas + 1))
+    fi
+}
+
+# --help no es un error: imprime el uso y sale con 0.
+ayuda() {
+    rc=0
+    timeout 10 "$1" --help > "$TMP/out" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ] && grep -q "uso:" "$TMP/out"; then
+        echo "   OK (0): $(basename "$1") --help"
+    else
+        echo "   FALLO: $(basename "$1") --help salió con $rc"
+        fallas=$((fallas + 1))
+    fi
+}
+
 coord_termina() {
     wait "$coord_pid" 2>/dev/null
     rc_coord=$?
     pids=''
 }
 
-if [ ! -x "$COORD" ] || [ ! -x "$APP" ]; then
-    echo "e2e_arranque.sh: faltan ejecutables; corré make primero." >&2
-    exit 1
-fi
+for b in "$COORD" "$APP" "$PI" "$RW" "$GRAN"; do
+    if [ ! -x "$b" ]; then
+        echo "e2e_arranque.sh: falta $b; corré make primero." >&2
+        exit 1
+    fi
+done
 
 echo "e2e_arranque.sh: casos de inicio y validación"
 
@@ -108,6 +144,27 @@ rechaza "trabajador con --iters 0"           "$APP" --port 9 --nodes 2 --id 0 --
 rechaza "trabajador con --page 256"          "$APP" --port 9 --nodes 2 --id 0 --page 256
 rechaza "trabajador con desborde de N*K" \
         "$APP" --port 9 --nodes 4 --id 0 --iters 18446744073709551615
+
+echo "-- argumentos inválidos de las aplicaciones de #7, con código 1"
+# Las opciones de conexión las lee app_common.c para las tres, así que esos
+# casos van una vez con cada aplicación; las propias, con la suya.
+for b in "$PI" "$RW" "$GRAN"; do
+    nombre=$(basename "$b")
+    rechaza_args "$nombre sin --port"           "$b" --nodes 2 --id 0
+    rechaza_args "$nombre con --id 2 de 2"      "$b" --port 9 --nodes 2 --id 2
+    rechaza_args "$nombre con opción inventada" "$b" --port 9 --nodes 2 --id 0 --inventada x
+    rechaza_args "$nombre con opción sin valor" "$b" --port 9 --nodes 2 --id
+    ayuda "$b"
+done
+rechaza_args "app_pi con --terms 0"           "$PI" --port 9 --nodes 2 --id 0 --terms 0
+rechaza_args "app_pi con --terms 2^52+1" \
+             "$PI" --port 9 --nodes 2 --id 0 --terms 4503599627370497
+rechaza_args "app_rw con --versions 0"        "$RW" --port 9 --nodes 2 --id 0 --versions 0
+rechaza_args "app_rw con --page 256"          "$RW" --port 9 --nodes 2 --id 0 --page 256
+rechaza_args "app_granularity con --layout zzz" \
+             "$GRAN" --port 9 --nodes 2 --id 0 --layout zzz
+rechaza_args "app_granularity con --rounds 0" \
+             "$GRAN" --port 9 --nodes 2 --id 0 --rounds 0
 
 echo "-- una página que no existe en esta sesión"
 # Distinto de --page 256: la 99 es válida para el PROTOCOLO y no para una
