@@ -89,6 +89,17 @@ experimental. Comprueba tres identidades antes de informar —las páginas y las
 derivadas de los eventos contra las columnas acumuladas, y los bytes por grupo contra el total— y
 marca la corrida si alguna no cierra, en vez de dar un número que no se sostiene.
 
+Y de los resultados de una matriz de experimentos sale el resumen por configuración:
+
+```bash
+./scripts/analisis.py results/
+```
+
+Agrupa las repeticiones de cada configuración e informa media, desviación estándar muestral y n
+de cada métrica, tomando el tráfico del registro de cada corrida. Ninguna corrida se descarta en
+silencio: una que no terminó en 0, o cuyo tráfico no cuadra, sale de las estadísticas pero se
+informa con su nombre y su motivo.
+
 ## Organización del repositorio
 
 ```
