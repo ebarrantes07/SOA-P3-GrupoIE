@@ -102,6 +102,11 @@ def cargar_corrida(ruta):
         if campo not in d:
             return None, "al JSON le falta el campo %s" % campo
 
+    # Se juntan TODOS los motivos antes de volver. Devolver en el primero
+    # dejaba a una corrida que falla por dos cosas informada por una sola, y
+    # el diagnóstico con las dos juntas es más directo (revisión del #19).
+    motivos = []
+
     cod = d.get("codigos_salida", {})
     malos = []
     if cod.get("coordinador", 0) != 0:
@@ -109,22 +114,32 @@ def cargar_corrida(ruta):
     for i, c in enumerate(cod.get("nodos", [])):
         if c != 0:
             malos.append("nodo%d=%s" % (i, c))
+    if malos:
+        motivos.append("procesos que no terminaron en 0: " + ", ".join(malos))
 
     tr = None
     nombre_log = d.get("log")
-    if nombre_log:
+    if not nombre_log:
+        # Sin registro no hay tráfico, y en false sharing y en localidad el
+        # tráfico ES el resultado. Antes esta corrida entraba como buena y sus
+        # métricas red.* faltaban en silencio, así que esa configuración se
+        # promediaba con menos muestras que las demás sin que nadie lo viera
+        # (revisión del #19).
+        motivos.append("el JSON no nombra su registro: sin tráfico la corrida "
+                       "no es comparable con las otras repeticiones")
+    else:
         csv_path = os.path.join(os.path.dirname(ruta), nombre_log)
         try:
             tr = metricas.metricas(csv_path)
         except (OSError, ValueError) as e:
-            return d, "no se pudo medir el registro: %s" % e
-        if not tr["verificacion"]["todo_cuadra"]:
-            return d, "el tráfico del registro no cuadra"
+            motivos.append("no se pudo medir el registro: %s" % e)
+        else:
+            if not tr["verificacion"]["todo_cuadra"]:
+                motivos.append("el tráfico del registro no cuadra")
+                tr = None       # no se usa el tráfico de un registro así
     d["_trafico"] = tr
 
-    if malos:
-        return d, "procesos que no terminaron en 0: " + ", ".join(malos)
-    return d, None
+    return d, ("; ".join(motivos) if motivos else None)
 
 
 def metricas_de(c):

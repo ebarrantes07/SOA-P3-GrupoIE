@@ -149,6 +149,33 @@ PY
     fi
 done
 
+# Las etiquetas del extremo no se enciman. Los datos de prueba tienen el caso
+# difícil a propósito: con T grande las dos series convergen (206 y 198), que
+# es la conclusión del experimento y es cuando los números se superponían
+# (revisión del #19).
+if python3 - "$TMP/fig/fig3_distribucion.svg" <<'ETIQ'
+import re, sys
+s = open(sys.argv[1], encoding="utf-8").read()
+et = [(float(x), float(y), t) for x, y, t in re.findall(
+    r'<text x="([0-9.]+)" y="([0-9.]+)" font-size="10" fill="#0b0b0b"[^>]*>'
+    r'([^<]+)</text>', s)]
+if len(et) != 4:
+    print("   se esperaban 4 etiquetas de extremo y hay %d" % len(et))
+    sys.exit(1)
+mal = [(a, b) for i, a in enumerate(et) for b in et[i + 1:]
+       if abs(a[0] - b[0]) < 60 and abs(a[1] - b[1]) < 12]
+if mal:
+    print("   etiquetas encimadas: %s" % (mal,))
+    sys.exit(1)
+print("   las 4 etiquetas del extremo estan a 12 px o mas entre si")
+ETIQ
+then
+    echo "   OK: las etiquetas del extremo no se enciman"
+else
+    echo "   FALLO: hay etiquetas del extremo encimadas"
+    fallas=$((fallas + 1))
+fi
+
 # Cantidad de marcas: 3 lecturas x 2 modos x 2 paneles = 12 barras.
 barras=$(grep -c '<path d=' "$TMP/fig/fig1_localidad.svg" || true)
 if [ "$barras" -eq 12 ]; then

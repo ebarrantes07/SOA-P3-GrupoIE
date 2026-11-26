@@ -139,6 +139,21 @@ rm -f "$DIR/c_r8.csv"
 # Mala 4: JSON ilegible.
 echo '{ esto no es json' > "$DIR/c_r9.json"
 
+# Mala 5: el JSON no nombra su registro. Antes entraba como buena y sus
+# métricas de tráfico faltaban en silencio (revisión del #19).
+corrida c_r10.json 10 1000 0 c_r10.csv maquina-a prueba
+python3 - "$DIR/c_r10.json" <<'JSON'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.pop("log")
+json.dump(d, open(sys.argv[1], "w"))
+JSON
+
+# Mala 6: falla por las DOS cosas a la vez, y las dos tienen que informarse.
+corrida c_r11.json 11 1000 3 c_r11.csv maquina-a prueba
+awk -F, -v OFS=, 'NR == 4 { $17 = $17 + 1000 } { print }' "$real" \
+    > "$DIR/c_r11.csv.tmp" && mv "$DIR/c_r11.csv.tmp" "$DIR/c_r11.csv"
+
 # Otra configuración, con una sola repetición: la desviación no existe.
 mkdir -p "$TMP/results/sola"
 DIR="$TMP/results/sola"
@@ -176,7 +191,7 @@ echo "-- la aritmética"
 # Las cinco buenas y nada más: n=5 de 9 repeticiones.
 # Ocho y no nueve: el JSON ilegible no se puede atribuir a ninguna
 # configuracion --no se pudo leer su config-- y se informa aparte.
-exige "cinco corridas buenas de ocho leidas"  "8 repeticiones, n=5"
+exige "cinco corridas buenas de diez leidas"  "10 repeticiones, n=5"
 exige "media 14 y desviación muestral 3.162"  "app\.t_trabajo_ms +14 ± 3\.162"
 exige "por nodo se toma el máximo: media 15"  "nodo_max\.t_trabajo_ms +15 ± 3\.162"
 exige "el rango va de 10 a 18"                "\[10, 18\]"
@@ -190,6 +205,10 @@ exige "el registro que no cuadra" \
 exige "el registro que falta" \
       "DESCARTADA r8 \(c_r8\.json\): no se pudo medir el registro"
 exige "el JSON ilegible"                 "ILEGIBLE c_r9.json"
+exige "el JSON sin registro" \
+      "DESCARTADA r10 \(c_r10\.json\): el JSON no nombra su registro"
+exige "los dos motivos juntos, en una sola línea" \
+      "r11 \(c_r11\.json\): procesos que no terminaron en 0: nodo0=3; el tráfico"
 
 echo "-- los otros dos casos"
 exige "con n=1 la desviación no existe"  "app\.t_trabajo_ms +20 ± —"

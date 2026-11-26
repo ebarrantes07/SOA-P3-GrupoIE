@@ -217,6 +217,45 @@ def marco(svg, x0, y0, w, h, maximo, titulo_y):
     return top, (lambda v: y0 + h - (min(v, top) / top) * h)
 
 
+def colocar_extremos(svg, extremos, y_tope, y_piso, obstaculos, minimo=12.0):
+    """Coloca las etiquetas del extremo sin que se encimen entre ellas ni con
+    la línea de referencia.
+
+    Hace falta porque con datos reales las dos series CONVERGEN —con T grande
+    el total y el cálculo casi coinciden, que es justamente la conclusión del
+    experimento— y los dos números quedaban uno sobre otro, ilegibles
+    (hallazgo de la revisión del #19, que las rasterizó). Cuando una etiqueta
+    se corre de su punto, se dibuja una guía fina hasta él para que no se
+    pierda de qué serie es."""
+    if not extremos:
+        return
+    puestas = [dict(e) for e in extremos]
+    for ob in obstaculos:
+        for e in puestas:
+            if abs(e["y"] - ob) < minimo:
+                e["y"] = ob - minimo if e["y"] <= ob else ob + minimo
+    puestas.sort(key=lambda e: e["y"])
+    for i in range(1, len(puestas)):
+        if puestas[i]["y"] - puestas[i - 1]["y"] < minimo:
+            puestas[i]["y"] = puestas[i - 1]["y"] + minimo
+    exceso = puestas[-1]["y"] - y_piso
+    if exceso > 0:
+        for e in puestas:
+            e["y"] -= exceso
+    falta = y_tope - puestas[0]["y"]
+    if falta > 0:
+        for e in puestas:
+            e["y"] += falta
+    for e in puestas:
+        # El corrimiento se mide contra la posición SIN mover, no contra el
+        # punto: el desplazamiento de 3.5 que centra el texto en su línea de
+        # base no es un corrimiento y no merece guía.
+        if abs(e["y"] - e["y_ini"]) > 3.0:
+            svg.line(e["x"] - 5, e["y0"], e["x"] - 1, e["y"] - 3.5,
+                     stroke=AXIS, width=1)
+        svg.text(e["x"], e["y"], e["texto"], size=10, fill=INK)
+
+
 def leyenda(svg, x, y, etiquetas):
     """Siempre presente con dos series o más: la identidad no es solo color."""
     cx = x
@@ -354,6 +393,21 @@ def lineas(datos, spec, out_dir):
         def ex(i):
             return x0 + i * paso + paso / 2
 
+        # La referencia va primero: su altura es un obstáculo para las
+        # etiquetas del extremo, así que hay que conocerla antes de colocarlas.
+        obstaculos = []
+        if spec.get("referencia"):
+            metrica, et = spec["referencia"]
+            vals = [valor(r, metrica)[0] for _, r in grupo
+                    if valor(r, metrica)[0] is not None]
+            if vals:
+                yr = ey(sum(vals) / len(vals))
+                svg.line(x0, yr, x0 + pw, yr, stroke=INK_SOFT, width=1.4,
+                         dash="5 4")
+                svg.text(x0 + 6, yr - 7, et, size=10, fill=INK_SOFT)
+                obstaculos.append(yr)
+
+        extremos = []
         for si, (metrica, _et) in enumerate(series):
             puntos = []
             for i, xv in enumerate(xs):
@@ -373,17 +427,10 @@ def lineas(datos, spec, out_dir):
                     svg.barra_error(px, ey(med - sd), ey(med + sd))
                 svg.circle(px, py, 4.5, SERIES[si % len(SERIES)], ring=SURFACE)
             px, py, med, _ = puntos[-1]
-            svg.text(px + 9, py + 3.5, fmt_num(med), size=10, fill=INK)
+            extremos.append({"x": px + 9, "y": py + 3.5, "y_ini": py + 3.5,
+                             "y0": py, "texto": fmt_num(med)})
 
-        if spec.get("referencia"):
-            metrica, et = spec["referencia"]
-            vals = [valor(r, metrica)[0] for _, r in grupo
-                    if valor(r, metrica)[0] is not None]
-            if vals:
-                yr = ey(sum(vals) / len(vals))
-                svg.line(x0, yr, x0 + pw, yr, stroke=INK_SOFT, width=1.4,
-                         dash="5 4")
-                svg.text(x0 + 6, yr - 7, et, size=10, fill=INK_SOFT)
+        colocar_extremos(svg, extremos, y0 + 8, y0 + ph - 2, obstaculos)
 
         for i, xv in enumerate(xs):
             svg.text(ex(i), y0 + ph + 16, str(xv), size=10.5, fill=INK_SOFT,

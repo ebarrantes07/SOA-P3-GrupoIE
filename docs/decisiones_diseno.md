@@ -2206,3 +2206,90 @@ hace útil al registro es que estén en un solo lugar y que cada uno diga qué q
   sobra (120 s sobre un costo de 3 a 6 s) en vez de estar ajustados a lo medido. Ajustarlos habría
   convertido una anomalía del entorno en un fallo falso.
 - **Sin cubrir:** la causa. Queda anotada para no volver a perseguirla desde cero si reaparece.
+
+---
+
+## D8.2 — Las métricas se derivan del registro, y nada se descarta en silencio
+
+- **Fecha:** 2026-11-25
+- **Issue:** [#9](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/9)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+Los experimentos piden media, desviación y n por configuración, y métricas de tráfico que digan
+si cuentan cabeceras y si la página se cuenta una vez por transmisión. El reparto de #9 dejó el
+lanzador de un lado y la medición del otro, con una costura declarada: el lanzador deja el
+registro del coordinador crudo al lado de cada corrida y no calcula ninguna métrica.
+
+### Decisión
+
+**Las métricas de tráfico salen del registro, en un solo lugar.** `metricas.py` es el único
+módulo que sabe qué significa cada columna. Lo que responde, leído de `log.c` y no supuesto: los
+bytes incluyen los 32 de cabecera, porque `log_count_sent` suma `DSM_HEADER_SIZE + payload_len`;
+y la página se cuenta una vez por trama que la lleva, porque `carries_page` es cierto solo para
+REL_WRITE y para un ACQ_GRANT con 4096 bytes de carga.
+
+**Las columnas de tráfico son acumulativas.** El total de una corrida es el de la última fila.
+Sumar la columna multiplica: en un registro de 100 filas, sumar `bytes_in` da 833 160 donde el
+valor real es 14 592.
+
+**El tráfico se atribuye por evento restando filas consecutivas.** Se supuso lo contrario y se
+fue a verlo: en `manager.c` la recepción cuenta la trama antes de procesar nada, y cada caso de
+`on_action` llama a `send_to` —que cuenta— antes de escribir su fila. Eso da algo que las
+columnas no dan: **si una concesión llevó página**, porque su delta es 4136 en vez de 40. Dos
+filas valen varias tramas, porque hay una fila pero una trama por nodo: `BARRIER_RELEASE` vale
+N×40 y `SESSION_START` vale N×56. Con esas dos reglas, el 100% de los deltas de cuatro corridas
+reales coincide con un tamaño de trama del protocolo.
+
+**Tres identidades antes de dar un número**: las páginas y las invalidaciones reconstruidas desde
+los eventos contra las columnas acumuladas, y los bytes por grupo contra el total. Una corrida
+que no las cumple se informa marcada y con el motivo.
+
+**Desviación muestral (n−1).** Cinco repeticiones son una muestra, no la población: con los
+valores 10, 12, 14, 16 y 18 eso da 3.1623 y no 2.8284. Con n=1 no existe y se informa vacía,
+nunca 0, que se leería como "sin variación".
+
+**Ninguna corrida se descarta en silencio, y se informan TODOS sus motivos.** Sale de las
+estadísticas por no terminar en 0, por tráfico que no cuadra, por registro ilegible o por no
+nombrar su registro; los motivos se acumulan y se informan juntos con archivo y repetición. Las
+dos últimas causas y la acumulación salieron de la revisión del #19: una corrida sin registro
+entraba como buena y sus métricas de tráfico faltaban en silencio, así que esa configuración se
+promediaba con menos muestras que las demás sin que nadie lo viera.
+
+**De los valores por nodo se toma el máximo** antes de promediar entre repeticiones: una
+configuración tarda lo que tarda el nodo más lento, y promediar los cuatro esconde al que define
+la corrida.
+
+**Las figuras se escriben a mano en SVG.** Matplotlib está instalado en la máquina de desarrollo,
+pero el README promete biblioteca estándar y #10 exige reconstruir desde una copia limpia. Los
+colores son los slots 1 y 2 de la paleta categórica de referencia, ya validados; el orden lo fija
+cada figura y no el alfabeto, para que un color signifique lo mismo en las tres. Un eje por panel
+y nunca dos escalas: donde hay dos magnitudes —invalidaciones y bytes— van dos paneles.
+
+### Por qué
+
+Porque de estas cifras sale la tabla de tráfico del informe. Un módulo que acepta cualquier
+registro deja pasar al informe un número que no se sostiene, y una corrida descartada sin decirlo
+convierte un promedio en una afirmación sin respaldo.
+
+### Cómo se validó
+
+`e2e_metricas.sh` exige que un registro real cuadre y que tres alteraciones descuadren **cada una
+por el motivo correcto** —delta sin explicar, páginas, invalidaciones—; se comprobó antes que
+cada alteración rompe una sola de las tres identidades. `e2e_analisis.sh` construye resultados con
+valores cuyo promedio y desviación se conocen y seis corridas malas, una por cada forma de serlo,
+y exige los números exactos y que las seis queden fuera y nombradas; la mala lleva el valor 1000 a
+propósito, porque si entrara la media saltaría de 14 a 181. `e2e_graficas.sh` comprueba por
+cálculo lo que un ojo verificaría, porque en el entorno de desarrollo no hay con qué rasterizar
+SVG: XML válido, nada fuera del lienzo, ningún NaN, la cantidad de marcas que los datos piden, la
+leyenda presente y las etiquetas del extremo a 12 px o más entre sí.
+
+Esa última comprobación existe por la revisión del #19, que sí las rasterizó: con T grande las dos
+series convergen —que es la conclusión del experimento— y los dos números quedaban uno sobre otro.
+Ahora las etiquetas se separan en vertical, esquivan la línea de referencia y, cuando se corren de
+su punto, llevan una guía fina hasta él.
+
+Medido sobre 50 corridas reales: con el mismo trabajo, compartir la página cuesta 2,1× el tiempo
+con dos nodos y 2,4× con cuatro; y la fase de cálculo de π escala 3,75× con cuatro nodos cuando T
+es grande, mientras que con T chico distribuir empeora todo porque lo que se mide es el arranque.
