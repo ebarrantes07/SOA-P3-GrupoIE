@@ -174,7 +174,13 @@ def _correr(app, nodos, paginas, args, log_path, run_id, vivos):
     # escuchando. Fin de archivo = el coordinador murió al arrancar.
     puerto = coord.stdout.readline().strip()
     if not puerto.isdigit():
-        coord.wait(timeout=10)
+        # Si cerró stdout pero sigue vivo, no se le espera para siempre ni se
+        # deja escapar la excepción: la matriz seguiría con un traceback.
+        try:
+            coord.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            matar(coord)
+            coord.wait()
         return {"codigos": {"coordinador": coord.returncode, "nodos": []},
                 "salidas": [], "errores": [coord.stderr.read()],
                 "comando": [], "duracion_s": time.monotonic() - t0}
@@ -204,7 +210,16 @@ def _correr(app, nodos, paginas, args, log_path, run_id, vivos):
     # de conectarse, espera indefinidamente a propósito (D3.5) y cada corrida
     # fallida costaría cinco minutos. Si hay que matarlo, sale con -9 y la
     # corrida queda marcada como fallida, que es lo que es.
-    gracia = TIMEOUT_MS / 1000.0 + 5.0
+    #
+    # El plazo completo solo tiene sentido si todos los nodos salieron en 0:
+    # ahí el coordinador está cerrando en orden y puede necesitar su margen.
+    # Si alguno falló, la corrida ya está perdida y el coordinador quizá
+    # nunca cierre (nodos muertos antes de registrarse), así que esperar el
+    # plazo entero solo costaría 35 s por corrida.
+    if all(c == 0 for c in codigos):
+        gracia = TIMEOUT_MS / 1000.0 + 5.0
+    else:
+        gracia = 2.0
     try:
         _, cerr = coord.communicate(
             timeout=max(1.0, min(gracia, limite - time.monotonic())))
@@ -219,6 +234,19 @@ def _correr(app, nodos, paginas, args, log_path, run_id, vivos):
             "salidas": salidas, "errores": errores,
             "comando": cmd + ["--id", "<i>"],
             "duracion_s": time.monotonic() - t0}
+
+
+def nodo_representativo(por_nodo):
+    """De qué nodo es `salida`: el nodo 0, salvo que haya un lector.
+
+    En localidad el nodo 0 es el escritor y publica una sola vez, así que sus
+    `adquisiciones` y `accesos_locales` no dicen nada del experimento. Lo que
+    se mide es el lector, y es el primero con rol=lector. El JSON lo nombra
+    en `salida_nodo` para que nadie tenga que adivinarlo."""
+    for i, d in enumerate(por_nodo):
+        if d.get("rol") == "lector":
+            return i
+    return 0
 
 
 def ok(r):
@@ -308,11 +336,13 @@ def main(argv):
                 inicio = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 r = correr(app, nodos, paginas, extra, log, run_id)
                 por_nodo = [pares(s) for s in r["salidas"]]
+                nodo_salida = nodo_representativo(por_nodo)
                 doc = {
                     "experimento": exp,
                     "config": cfg,
                     "repeticion": rep,
-                    "salida": por_nodo[0] if por_nodo else {},
+                    "salida": por_nodo[nodo_salida] if por_nodo else {},
+                    "salida_nodo": nodo_salida,
                     "salida_por_nodo": por_nodo,
                     "codigos_salida": r["codigos"],
                     "log": base + ".csv",

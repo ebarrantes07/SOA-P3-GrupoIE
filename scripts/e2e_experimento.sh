@@ -8,6 +8,7 @@
 #   - los campos del contrato en cada JSON, códigos de salida en 0 y el
 #     registro nombrado en `log` presente y con el encabezado del proyecto;
 #   - un calentamiento por configuración, declarado, y fuera de los .json;
+#   - que en localidad `salida` sea la del lector, nombrado en salida_nodo;
 #   - que la localidad distinga de verdad las dos formas: con `repetido` el
 #     lector pide una adquisición por lectura, con `lote` una sola, y en las
 #     dos hace las mismas lecturas locales.
@@ -91,6 +92,11 @@ for exp, configs in ESPERADAS.items():
             fallas.append("%s: el calentamiento declarado no existe" % base)
         if exp == "localidad":
             lector = doc["salida_por_nodo"][1]
+            # `salida` tiene que ser la del lector, no la del escritor: es la
+            # que el análisis promedia como app.*.
+            if doc.get("salida_nodo") != 1 or doc["salida"] != lector:
+                fallas.append("%s: salida es del nodo %s y debía ser del "
+                              "lector (1)" % (base, doc.get("salida_nodo")))
             m = doc["config"]["lecturas"]
             adq = 1 if doc["config"]["modo"] == "lote" else m
             if (lector.get("accesos_locales") != str(m)

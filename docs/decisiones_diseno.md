@@ -2249,10 +2249,20 @@ la nombra en `calentamiento_descartado`. No es `.json`, de modo que el análisis
 **Una corrida que falla no detiene la matriz.** Queda escrita con sus códigos de salida y los
 errores, el análisis la excluye con su motivo, y al final el lanzador lista todas las fallidas y
 sale con 1. Hubo que resolver un caso en particular: si los nodos mueren antes de conectarse, el
-coordinador espera indefinidamente a propósito (D3.5). El lanzador le da a lo sumo un plazo más 5 s
-después de que salió el último nodo, y si no cerró lo mata y lo registra. Con un `app_rw` que sale
-con 3, la matriz mínima terminó en 57 s con las cuatro corridas de localidad marcadas como fallidas
-y las demás medidas. Antes de este cambio, cada corrida fallida costaba los 300 s del tope.
+coordinador espera indefinidamente a propósito (D3.5). Después de que salió el último nodo, el
+lanzador le da un plazo más 5 s si todos los nodos salieron en 0, porque ahí está cerrando en orden
+y puede necesitar el margen. Si alguno falló, la corrida ya está perdida y le da 2 s. En los dos
+casos, si no cerró lo mata y lo registra. Con un `app_rw` que sale con 3 antes de conectarse, que es
+el peor caso, cada corrida fallida cuesta 2 s: las 12 corridas de localidad de la matriz mínima
+terminaron en 25 s. Con el plazo completo eran 35 s por corrida, y antes de tener plazo, los 300 s
+del tope. Si el coordinador arranca pero no imprime su puerto, tampoco se le espera para siempre:
+a los 10 s se lo mata y la corrida queda fallida, sin detener la matriz.
+
+**En localidad, `salida` es la del lector.** El nodo 0 es el escritor y publica una sola vez, así
+que sus `adquisiciones` y `accesos_locales` no dicen nada del experimento: `app.adquisiciones`
+diría 1 en los seis casos. `salida` es la del primer nodo con `rol=lector` y, en los demás
+experimentos, la del nodo 0. Cada JSON nombra el nodo en `salida_nodo`, y `salida_por_nodo` sigue
+trayendo todos.
 
 **Cada proceso en su propio grupo, y nada vivo al salir.** Así, al vencer el tope se mata el grupo
 entero. Como eso los saca del grupo del lanzador, un `finally` mata lo que quede vivo, y SIGTERM se
