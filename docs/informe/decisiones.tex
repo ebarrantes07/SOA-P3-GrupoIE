@@ -1,4 +1,89 @@
 \section{Decisiones de diseño}
 
-\pendiente{las decisiones que explican por qué el código quedó así, contadas sin códigos ni referencias a la bitácora}
+Algunas decisiones del sistema se explican solas en el código. Las que siguen
+no, porque en cada una se eligió una cosa a costa de otra.
 
+\subsection{Una cabecera fija de 32 bytes}
+
+Cada trama lleva una cabecera de tamaño fijo, serializada campo por campo en
+orden de red, con lugar para todos los campos aunque el tipo de trama no los
+use. La alternativa era una cabecera de longitud variable con campos
+opcionales según el tipo, que habría ahorrado unos bytes por mensaje.
+
+Se eligió la fija porque el tamaño de cada trama queda determinado por su
+tipo, y eso convierte una afirmación difícil en una cuenta. El tráfico del
+sistema se puede verificar: cada evento del registro tiene un tamaño esperado,
+y la suma tiene que coincidir con los bytes acumulados. Con cabeceras
+variables esa comprobación habría dependido de reconstruir qué campos llevaba
+cada mensaje, que es justamente la clase de razonamiento que se quería evitar
+al medir.
+
+El costo es real pero pequeño en este sistema: 32 bytes frente a los 4096 de
+una página, y las tramas de control son pocas comparadas con las
+transferencias.
+
+\subsection{La liberación de una lectura también se confirma}
+
+Devolver un permiso de lectura no necesita respuesta: el coordinador podría
+quitar al nodo de la máscara y seguir. Aun así, responde, y la biblioteca
+espera esa confirmación antes de devolver el control a la aplicación.
+
+Esto le da a \code{DSM\_release} un contrato uniforme: cuando retorna, el
+coordinador ya sabe que el acceso terminó, sea de lectura o de escritura. Sin
+la confirmación, el valor de retorno de una liberación de lectura no
+significaría nada.
+
+La consecuencia más útil aparece en el registro. Sin confirmación, la llegada
+de un nodo a una barrera podría aparecer antes del fin de la lectura que la
+precedió, y no habría forma de distinguir un error real de un artefacto del
+orden en que se escribieron las filas. Con ella, que nadie entre a una barrera
+con un acceso vivo es una propiedad que se comprueba leyendo el registro.
+
+\subsection{La correlación viaja en la trama}
+
+Toda respuesta se correlaciona con su solicitud por el par formado por el nodo
+solicitante y un identificador de solicitud. Lo que no era obvio es que la
+invalidación también lo necesita: cuando el coordinador invalida la copia de
+un tercero, ese tercero no pidió nada, y su confirmación tiene que poder
+atribuirse a la ronda correcta.
+
+La alternativa discutida era dejarlo documentado y reconstruirlo cruzando
+información en el registro. Se resolvió en la trama: la invalidación lleva el
+identificador del solicitante en un campo que para ese tipo estaba libre, así
+que no agrega un byte y cada trama se explica sola. El registro no depende de
+que alguien cruce datos por fuera, y eso importa porque ese registro es
+exactamente lo que lee el verificador para demostrar que la concesión de
+escritura ocurrió después de las confirmaciones.
+
+\subsection{Tres candados que nunca se anidan}
+
+El trabajador tiene dos hilos y tres candados: uno protege la caché y la
+respuesta que se está esperando, otro serializa los envíos por el socket, y
+otro el registro. Nunca se toman dos a la vez, y ninguno se sostiene mientras
+se espera a la red.
+
+La regla no es estilística. Un candado retenido durante una operación de red
+convierte la latencia del peor caso en un bloqueo para el otro hilo, y un hilo
+receptor bloqueado es un nodo que deja de responder invalidaciones: el
+coordinador espera una confirmación que no va a llegar, y la sesión se cuelga
+en vez de fallar. Prohibir el anidamiento, además, hace innecesario demostrar
+que no hay interbloqueos: no puede haberlos.
+
+\subsection{El primer error de sesión gana}
+
+Cuando algo falla sin recuperación posible —una trama inválida, el socket
+caído, un plazo vencido—, el primer error que ocurre se guarda, se corta el
+socket y se despierta a todo el que estuviera esperando. Los errores que
+lleguen después no lo reemplazan.
+
+El motivo es que un fallo produce una cascada: el socket cortado hace que la
+siguiente lectura falle, que el siguiente plazo venza, que la siguiente
+llamada no encuentre con quién hablar. Si cada uno sobrescribiera al anterior,
+lo que la aplicación recibe es el último síntoma y no la causa. Guardando el
+primero, el código de error que llega a la aplicación es el que explica qué
+pasó.
+
+Esa misma disciplina hace que una liberación fallida no deje la página
+retenida: el estado local se limpia antes de intentar la operación, de modo
+que el cierre de la sesión siempre puede liberar los recursos, incluso cuando
+la operación que falló era justamente la que debía devolverlos.
