@@ -176,6 +176,60 @@ else
     fallas=$((fallas + 1))
 fi
 
+# Ningún marcador tapa la etiqueta de la referencia, y ninguna barra de error
+# queda debajo de su marcador. Las dos las encontró una revisión mirando la
+# figura: la primera hacía que "secuencial" se leyera "secuencia", y la segunda
+# escondía entera cualquier desviación menor que el radio del marcador.
+if python3 - "$TMP/fig/fig3_distribucion.svg" <<'TAPA'
+import re, sys
+s = open(sys.argv[1], encoding="utf-8").read()
+fallas = []
+
+refs = [(float(x), float(y)) for x, y in re.findall(
+    r'<text x="([0-9.]+)" y="([0-9.]+)" font-size="10" fill="#52514e"'
+    r'[^>]*>secuencial</text>', s)]
+if len(refs) != 2:
+    print("   se esperaban 2 etiquetas de referencia y hay %d" % len(refs))
+    sys.exit(1)
+puntos = [(float(x), float(y)) for x, y, r in re.findall(
+    r'<circle cx="([0-9.]+)" cy="([0-9.]+)" r="([0-9.]+)"', s) if r == "6.5"]
+for lx, ly in refs:
+    ancho = 4.9 * len("secuencial")
+    for px, py in puntos:
+        if (px + 7.5 > lx and px - 7.5 < lx + ancho
+                and py + 7.5 > ly - 8 and py - 7.5 < ly + 2):
+            fallas.append("un marcador en (%g,%g) tapa la etiqueta en (%g,%g)"
+                          % (px, py, lx, ly))
+
+# Orden de dibujo: el marcador y después su barra. La barra se reconoce por
+# estar centrada en el punto, no por pasarle por encima: con dos series que
+# convergen, la barra de una contiene el marcador de la otra y emparejarlas
+# por superposición daba un falso positivo.
+for m in re.finditer(r'<circle cx="([0-9.]+)" cy="([0-9.]+)" r="4.5"', s):
+    cx, cy = float(m.group(1)), float(m.group(2))
+    barra = [b for b in re.finditer(
+        r'<line x1="([0-9.]+)" y1="([0-9.]+)" x2="\1" y2="([0-9.]+)"', s)
+        if abs(float(b.group(1)) - cx) < 0.05
+        and abs((float(b.group(2)) + float(b.group(3))) / 2 - cy) < 0.6]
+    for b in barra:
+        if b.start() < m.start():
+            fallas.append("la barra de error en x=%g se dibuja antes que su "
+                          "marcador" % cx)
+
+if fallas:
+    for f in fallas:
+        print("   " + f)
+    sys.exit(1)
+print("   %d etiquetas de referencia despejadas, %d marcadores antes de su barra"
+      % (len(refs), len(puntos)))
+TAPA
+then
+    echo "   OK: nada tapa la referencia ni esconde una barra de error"
+else
+    echo "   FALLO: una etiqueta tapada o una barra de error escondida"
+    fallas=$((fallas + 1))
+fi
+
 # Cantidad de marcas: 3 lecturas x 2 modos x 2 paneles = 12 barras.
 barras=$(grep -c '<path d=' "$TMP/fig/fig1_localidad.svg" || true)
 if [ "$barras" -eq 12 ]; then

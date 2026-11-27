@@ -147,13 +147,19 @@ def tope_lindo(valor, marcas=5):
 
 
 def fmt_num(x):
+    """Decimales según la magnitud, y coma: el informe está en español.
+
+    Dos decimales en todo lo no entero ponía «198.60» al lado de «96» en la
+    misma figura, y son invalidaciones: una cuenta no se mide en centésimas.
+    """
     if x is None:
         return "—"
     if abs(x) >= 10000:
         return "%.0fk" % (x / 1000.0)
     if abs(x - round(x)) < 1e-9:
         return "%d" % round(x)
-    return "%.2f" % x
+    s = "%.1f" % x if abs(x) >= 10 else "%.2f" % x
+    return s.replace(".", ",")
 
 
 # ---- Los datos del análisis ---------------------------------------------
@@ -256,6 +262,58 @@ def colocar_extremos(svg, extremos, y_tope, y_piso, obstaculos, minimo=12.0):
         svg.text(e["x"], e["y"], e["texto"], size=10, fill=INK)
 
 
+def _banda(seg, arriba, abajo):
+    """Tramo de x en el que un segmento cruza la franja [arriba, abajo].
+
+    Devuelve None si no la cruza. Sirve para correr una etiqueta más allá de
+    donde una línea le pasaría por encima del texto.
+    """
+    (x1, y1), (x2, y2) = sorted(seg)
+    if y1 == y2:
+        return (x1, x2) if arriba <= y1 <= abajo else None
+    xa = x1 + (arriba - y1) * (x2 - x1) / (y2 - y1)
+    xb = x1 + (abajo - y1) * (x2 - x1) / (y2 - y1)
+    lo, hi = min(xa, xb), max(xa, xb)
+    lo, hi = max(lo, x1), min(hi, x2)
+    return (lo, hi) if lo < hi else None
+
+
+def colocar_referencia(svg, x0, pw, y0, ph, y_linea, texto, trazos):
+    """Coloca la etiqueta de la línea de referencia donde nada la tape.
+
+    Antes se dibujaba en el borde izquierdo y antes que las series, y ahí el
+    marcador del primer punto —que cae justo en ese borde— la pisaba: en la
+    figura de distribución «secuencial» se leía «secuencia». Ahora se prueba
+    el borde izquierdo, después a la derecha de cada estorbo, y si no entra,
+    el otro lado de la línea.
+    """
+    ancho = 4.9 * len(texto)
+    puntos = [p for t in trazos for p in t]
+    segmentos = [(t[i], t[i + 1]) for t in trazos for i in range(len(t) - 1)]
+    for y in (y_linea - 7, y_linea + 13):
+        if not (y0 + 10 <= y <= y0 + ph - 4):
+            continue
+        arriba, abajo = y - 8, y + 2
+        x = x0 + 6
+        for _ in range(len(puntos) + len(segmentos) + 1):
+            if x + ancho > x0 + pw - 4:
+                break
+            tope = None
+            for px, py in puntos:
+                if (px + 7.5 > x and px - 7.5 < x + ancho
+                        and py + 7.5 > arriba and py - 7.5 < abajo):
+                    tope = max(tope or 0, px + 7.5)
+            for seg in segmentos:
+                banda = _banda(seg, arriba, abajo)
+                if banda and banda[1] > x and banda[0] < x + ancho:
+                    tope = max(tope or 0, banda[1])
+            if tope is None:
+                svg.text(x, y, texto, size=10, fill=INK_SOFT)
+                return
+            x = tope + 4
+    svg.text(x0 + 6, y_linea - 7, texto, size=10, fill=INK_SOFT)
+
+
 def leyenda(svg, x, y, etiquetas):
     """Siempre presente con dos series o más: la identidad no es solo color."""
     cx = x
@@ -336,8 +394,12 @@ def barras_agrupadas(datos, spec, out_dir):
         svg.text(x0 + pw / 2, y0 + ph + 34, spec["x_titulo"], size=11,
                  fill=INK_SOFT, anchor="middle")
 
+    # Sin el diccionario, la leyenda imprime el valor de configuración crudo,
+    # y «shared / separate» quedaba en inglés bajo un subtítulo en español.
+    etq = spec.get("etiquetas_series", {})
     leyenda(svg, 60, h - 14,
-            [(spec.get("serie_formato", "%s") % s).strip() for s in ss])
+            [etq.get(s, (spec.get("serie_formato", "%s") % s).strip())
+             for s in ss])
     ruta = os.path.join(out_dir, spec["archivo"])
     with open(ruta, "w", encoding="utf-8") as f:
         f.write(svg.render())
@@ -393,9 +455,12 @@ def lineas(datos, spec, out_dir):
         def ex(i):
             return x0 + i * paso + paso / 2
 
-        # La referencia va primero: su altura es un obstáculo para las
-        # etiquetas del extremo, así que hay que conocerla antes de colocarlas.
+        # La línea de referencia va primero: su altura es un obstáculo para
+        # las etiquetas del extremo, así que hay que conocerla antes de
+        # colocarlas. Su etiqueta, en cambio, se deja para el final: dibujada
+        # acá quedaba debajo de los marcadores, que se pintan después.
         obstaculos = []
+        referencia = None
         if spec.get("referencia"):
             metrica, et = spec["referencia"]
             vals = [valor(r, metrica)[0] for _, r in grupo
@@ -404,9 +469,10 @@ def lineas(datos, spec, out_dir):
                 yr = ey(sum(vals) / len(vals))
                 svg.line(x0, yr, x0 + pw, yr, stroke=INK_SOFT, width=1.4,
                          dash="5 4")
-                svg.text(x0 + 6, yr - 7, et, size=10, fill=INK_SOFT)
                 obstaculos.append(yr)
+                referencia = (yr, et)
 
+        trazos = []
         extremos = []
         for si, (metrica, _et) in enumerate(series):
             puntos = []
@@ -422,13 +488,22 @@ def lineas(datos, spec, out_dir):
                 continue
             svg.polyline([(p[0], p[1]) for p in puntos],
                          SERIES[si % len(SERIES)])
+            trazos.append([(p[0], p[1]) for p in puntos])
             for px, py, med, sd in puntos:
+                # El marcador va primero y la barra encima. Al revés, el halo
+                # opaco del marcador (r=6,5) se tragaba entera cualquier
+                # desviación menor que su radio, y una medición apretada se
+                # veía igual que una sin barra de error.
+                svg.circle(px, py, 4.5, SERIES[si % len(SERIES)], ring=SURFACE)
                 if sd:
                     svg.barra_error(px, ey(med - sd), ey(med + sd))
-                svg.circle(px, py, 4.5, SERIES[si % len(SERIES)], ring=SURFACE)
             px, py, med, _ = puntos[-1]
             extremos.append({"x": px + 9, "y": py + 3.5, "y_ini": py + 3.5,
                              "y0": py, "texto": fmt_num(med)})
+
+        if referencia:
+            colocar_referencia(svg, x0, pw, y0, ph, referencia[0],
+                               referencia[1], trazos)
 
         colocar_extremos(svg, extremos, y0 + 8, y0 + ph - 2, obstaculos)
 
@@ -473,6 +548,8 @@ FIGURAS = [
         "x": "nodes", "x_titulo": "nodos (N)",
         "series": "layout", "orden_series": ["shared", "separate"],
         "serie_formato": "%s",
+        "etiquetas_series": {"shared": "misma página",
+                             "separate": "una página por nodo"},
         "paneles": [("red.invals", "invalidaciones"),
                     ("red.bytes_total", "bytes")],
         "dibuja": barras_agrupadas,
