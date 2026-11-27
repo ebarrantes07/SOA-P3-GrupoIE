@@ -1,9 +1,26 @@
 \section{Introducción}
 
-El alcance, los experimentos y las preguntas de análisis de este
+Una memoria compartida distribuida ofrece a procesos con espacios de
+direcciones separados, posiblemente en máquinas distintas, la apariencia de
+compartir datos. Lo que en una sola máquina resuelve el hardware ---que todos
+vean la misma memoria--- acá tiene que resolverlo un protocolo: quién tiene
+una copia de cada página, quién puede escribirla y cuándo una copia deja de
+ser válida. El alcance, los experimentos y las preguntas de análisis de este
 trabajo los fija el enunciado del proyecto~\cite{enunciado2026}.
 
-\pendiente{el problema: varios procesos con espacios de direcciones separados que comparten páginas, y por qué un contrato explícito en vez de transparencia}
+Las DSM clásicas esconden ese protocolo detrás de los fallos de página, de
+modo que la aplicación usa punteros comunes. Este trabajo hace lo contrario a
+propósito: la aplicación pide cada acceso con \code{DSM\_acquire} y lo
+devuelve con \code{DSM\_release}. Se pierde transparencia, pero cada
+transferencia e invalidación ocurre en una llamada que el programador
+escribió, y por eso se puede verificar en el registro y medir por intervalo.
 
-\pendiente{qué entrega este trabajo y cómo se organiza el resto del documento}
-
+El trabajo entrega un coordinador, \code{dsm\_manager}; una biblioteca,
+\code{libdsm}; cuatro aplicaciones que ejercen el protocolo, y las herramientas
+para lanzar, verificar y analizar los experimentos. El resto del documento
+describe la arquitectura y la representación de la memoria
+(sección~\ref{sec:arq}), el protocolo con su pseudocódigo e invariantes
+(sección~\ref{sec:proto}) y cómo se verificó (sección~\ref{sec:pruebas}).
+Después presenta los experimentos, responde las preguntas de análisis, compara
+el diseño con la DSM transparente y cierra con las decisiones de diseño y los
+límites de alcance.
