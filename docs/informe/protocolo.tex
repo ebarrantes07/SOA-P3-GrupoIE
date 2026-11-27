@@ -1,10 +1,148 @@
 \section{Protocolo de coherencia y sincronización}
 
-\pendiente{el estado por página en el coordinador: escritor, lectores, versión, cola FIFO y ronda de invalidación}
+El coordinador mantiene, por página, el estado que decide quién puede hacer
+qué: la versión confirmada, el escritor actual si lo hay, la máscara de
+lectores activos, la máscara de copias retenidas, la máscara de confirmaciones
+de invalidación que faltan, y una cola FIFO de solicitudes en espera.
 
-\pendiente{pseudocódigo de la adquisición y de la publicación}
+Las tres máscaras son distintas a propósito. Un nodo puede tener copia
+retenida sin ser lector, y esa diferencia es la que decide a quién hay que
+invalidar: no a quien está leyendo, sino a quien guarda datos que van a quedar
+viejos.
 
-\pendiente{los invariantes: un escritor o varios lectores, nunca ambos; el grant solo después de las confirmaciones; la versión crece de a uno}
+\subsection{Adquirir}
 
-\pendiente{la traza real: una transición READ a WRITE reconstruida del registro del coordinador, mostrando que el grant ocurre después de los ACK}
+\begin{algorithm}[H]
+\caption{Solicitud de acceso en el coordinador}
+\begin{algorithmic}[1]
+\STATE \textbf{recibe} solicitud de $n$ sobre la página $p$, modo $m$,
+       con la versión $v_c$ que $n$ dice tener en caché
+\STATE encolar la solicitud al final de la cola FIFO de $p$
+\STATE \textsc{AvanzarCola}($p$)
+\end{algorithmic}
+\end{algorithm}
 
+\begin{algorithm}[H]
+\caption{\textsc{AvanzarCola}($p$)}
+\begin{algorithmic}[1]
+\WHILE{la cola de $p$ no está vacía}
+  \STATE $s \leftarrow$ cabeza de la cola
+  \IF{$s$ es de lectura \AND $p$ no tiene escritor}
+    \STATE conceder a $s$; agregar $s.n$ a lectores y a copias retenidas
+    \STATE sacar $s$ de la cola
+  \ELSIF{$s$ es de escritura \AND $p$ no tiene escritor \AND no hay lectores}
+    \IF{hay copias retenidas además de la de $s.n$}
+      \STATE abrir ronda: invalidar esas copias, anotar las confirmaciones
+             que faltan
+      \RETURN \COMMENT{el grant espera a las confirmaciones}
+    \ENDIF
+    \STATE conceder a $s$; $s.n$ pasa a ser el escritor
+    \STATE sacar $s$ de la cola
+  \ELSE
+    \RETURN \COMMENT{la cabeza no puede avanzar; nadie detrás la pasa}
+  \ENDIF
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+
+El \emph{grant} viaja con los 4096 bytes solo si la versión declarada por el
+solicitante no es la confirmada. Si coincide, viaja solo el permiso.
+
+Que la cola sea FIFO y que nadie pase a la cabeza es lo que impide la
+inanición: una solicitud de escritura detrás de un flujo continuo de lecturas
+bloquea a las lecturas que lleguen después de ella, en vez de esperar
+indefinidamente a que no haya ninguna.
+
+\subsection{Publicar}
+
+Al liberar un acceso de escritura, el trabajador manda la página entera. El
+coordinador la guarda como datos confirmados, incrementa la versión en uno,
+deja de considerarlo escritor —aunque él conserva su copia como retenida— y
+vuelve a avanzar la cola. Al liberar un acceso de lectura solo se quita al
+nodo de la máscara de lectores; su copia sigue retenida.
+
+\subsection{Invariantes}
+
+El coordinador comprueba su propio estado después de cada operación, y las
+condiciones que exige son estas:
+
+\begin{itemize}
+\item \textbf{Un escritor o varios lectores, nunca ambos.} Si hay escritor, la
+      máscara de lectores está vacía y la única copia retenida es la suya.
+\item \textbf{No hay lector sin copia.} Todo nodo en la máscara de lectores
+      está también en la de copias retenidas.
+\item \textbf{Una ronda de invalidación solo existe para un escritor en la
+      cabeza de la cola}, sin lectores activos, y solo sobre copias que siguen
+      retenidas. El solicitante nunca se invalida a sí mismo.
+\item \textbf{Ningún nodo aparece en el estado de una página que ya se fue de
+      la sesión}, y el estado declarado de cada nodo coincide con dónde
+      aparece.
+\end{itemize}
+
+Estas condiciones no son comentarios: son una función que se ejecuta y que las
+pruebas llaman después de cada transición.
+
+\subsection{Una transición de lectura a escritura, en el registro}
+
+El coordinador escribe una fila por evento. La tabla~\ref{tab:traza} es un
+fragmento literal de una corrida de tres nodos, con las columnas que
+importan. Los nodos 0 y 1 leen; el nodo 2 pide escribir mientras ellos tienen
+la página.
+
+\begin{table*}[t]
+\caption{Transición de lectura a escritura sobre la página 0.
+\emph{lect.} es la cantidad de lectores activos, \emph{máscara} el conjunto de
+copias retenidas y \emph{falta} las confirmaciones de invalidación
+pendientes.}
+\label{tab:traza}
+\centering
+\small
+\begin{tabular}{@{}rllrlr@{}}
+\toprule
+seq & nodo & evento & lect. & máscara & falta \\
+\midrule
+ 9 & 0 & \code{ACQ\_REQ} (READ)    & 0 & \code{0x00} & 0 \\
+10 & 0 & \code{ACQ\_GRANT} (READ)  & 1 & \code{0x01} & 0 \\
+11 & 1 & \code{ACQ\_REQ} (READ)    & 1 & \code{0x01} & 0 \\
+12 & 1 & \code{ACQ\_GRANT} (READ)  & 2 & \code{0x03} & 0 \\
+13 & 2 & \code{ACQ\_REQ} (WRITE)   & 2 & \code{0x03} & 0 \\
+14 & 0 & \code{REL\_READ}          & 2 & \code{0x03} & 0 \\
+15 & 0 & \code{READ\_RELEASED}     & 1 & \code{0x02} & 0 \\
+16 & 1 & \code{REL\_READ}          & 1 & \code{0x02} & 0 \\
+17 & 1 & \code{READ\_RELEASED}     & 0 & \code{0x00} & 0 \\
+18 & 0 & \code{INVALIDATE}         & 0 & \code{0x00} & 2 \\
+19 & 1 & \code{INVALIDATE}         & 0 & \code{0x00} & 2 \\
+20 & 0 & \code{INVALIDATE\_ACK}    & 0 & \code{0x00} & 2 \\
+21 & 1 & \code{INVALIDATE\_ACK}    & 0 & \code{0x00} & 1 \\
+22 & 2 & \code{ACQ\_GRANT} (WRITE) & 0 & \code{0x00} & 0 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+La secuencia dice cuatro cosas.
+
+\emph{Los lectores coexisten.} En la fila 12 hay dos lectores a la vez y la
+máscara es \code{0x03}: el protocolo no serializa lecturas.
+
+\emph{La escritura espera, y no interrumpe.} La solicitud del nodo 2 llega en
+la fila 13, cuando los dos lectores tienen la página. No se les quita nada: la
+ronda de invalidación recién se abre en la fila 18, después de que los dos
+liberaron por su cuenta. Lo que se invalida son las copias que quedaron
+retenidas, no lecturas en curso.
+
+\emph{El grant ocurre después de las confirmaciones.} Las dos invalidaciones
+salen en las filas 18 y 19, las dos confirmaciones entran en las filas 20 y
+21, y recién en la 22 se concede la escritura. La columna de pendientes baja
+de dos a uno a medida que llegan. No hay forma de leer esta secuencia al
+revés: los números son el orden en que el coordinador procesó los eventos.
+
+\emph{La versión es el testigo.} Durante toda la transición la versión
+confirmada es 0. La publicación del nodo 2 la lleva a 1, y en la segunda ronda
+de lecturas de esa misma corrida los tres nodos reciben la versión 1. El dato
+nuevo se observa porque la versión cambió, no porque haya pasado el tiempo.
+
+La traza se regenera con el ejecutable de esa misma prueba:
+
+\begin{center}
+\code{DSM\_TRAZA=traza.csv ./build/test\_e2e\_coherence}
+\end{center}

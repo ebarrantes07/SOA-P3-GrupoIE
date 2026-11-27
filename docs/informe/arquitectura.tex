@@ -1,8 +1,93 @@
 \section{Arquitectura y representación de la memoria}
 
-\pendiente{los procesos: un coordinador de un solo hilo con poll() y de 1 a 4 trabajadores sobre TCP; diagrama}
+El sistema son dos clases de proceso que se comunican por TCP. Un
+\code{dsm\_manager} —el coordinador— y de uno a cuatro trabajadores, cada uno
+un proceso aparte con su propio espacio de direcciones. No hay memoria
+compartida real entre ellos: lo que comparten es un acuerdo sobre el contenido
+de un conjunto de páginas, y ese acuerdo lo arbitra el coordinador.
 
-\pendiente{la memoria: páginas de 4096 bytes, el marco local de cada trabajador y los datos confirmados del coordinador}
+El coordinador es de un solo hilo y multiplexa con \code{poll()}. Atiende a
+todos los trabajadores en una sola secuencia de eventos, y esa secuencia es la
+que después permite razonar sobre el orden de lo que pasó: no hay dos
+decisiones del protocolo tomadas a la vez. La alternativa, un hilo por
+conexión, habría obligado a proteger el estado de cada página con cerrojos y a
+demostrar que esos cerrojos no introducen interbloqueos, sin ganar nada en un
+sistema donde el trabajo por mensaje es comparar máscaras de bits.
 
-\pendiente{la API de libdsm: init, acquire, release, barrier, finalize, y qué promete cada una}
+\subsection{La memoria y sus dos copias}
 
+La unidad de compartición es la página de 4096 bytes. El número de páginas se
+fija al arrancar la sesión y no cambia.
+
+Cada página existe en dos lugares. El coordinador guarda los \emph{datos
+confirmados}: el contenido que quedó después de la última publicación, con un
+número de versión que empieza en cero y crece de a uno. Cada trabajador guarda
+un \emph{marco} local por página, que es lo que la aplicación lee y escribe
+directamente en memoria.
+
+Esa es la diferencia esencial con la memoria compartida de un solo equipo: la
+aplicación escribe en su marco local a velocidad de memoria, y lo que escribió
+no existe para nadie más hasta que lo publica. El coordinador no observa las
+escrituras; recibe la página entera cuando el trabajador libera el acceso.
+
+\subsection{Los cinco estados de una copia}
+
+Un marco no es solo «tiene datos» o «no tiene». El trabajador distingue cinco
+situaciones, y la distinción es la que hace que una copia sirva de algo:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Estado & Significado \\
+\midrule
+\code{EMPTY}   & nunca hubo copia \\
+\code{INVALID} & hubo copia y el coordinador la invalidó \\
+\code{CACHED}  & copia vigente retenida, sin permiso \\
+\code{READ}    & permiso de lectura activo \\
+\code{WRITE}   & permiso de escritura activo \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{CACHED} es el estado que distingue una copia de un permiso. Al liberar un
+acceso, el trabajador conserva los datos; si nadie escribió la página mientras
+tanto, la próxima adquisición le devuelve el permiso sin volver a transferir
+los 4096 bytes. Para eso, al pedir acceso declara qué versión tiene guardada, y
+el coordinador decide si el \emph{grant} viaja con la página o sin ella.
+
+La consecuencia es que la copia ahorra la transferencia, nunca la consulta.
+Ningún estado permite saltarse el pedido de permiso. Esta distinción es la que
+se mide después: volver a adquirir cuesta mensajes aunque no cueste datos.
+
+\subsection{La interfaz}
+
+La biblioteca \code{libdsm} expone seis funciones, y el contrato está en los
+nombres:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.52\columnwidth}@{}}
+\toprule
+Función & Qué hace \\
+\midrule
+\code{DSM\_init}     & abre la sesión y espera a los demás nodos \\
+\code{DSM\_acquire}  & pide permiso de lectura o de escritura sobre una página \\
+\code{DSM\_release}  & devuelve el permiso; si era de escritura, publica \\
+\code{DSM\_barrier}  & punto de encuentro reutilizable entre todos los nodos \\
+\code{DSM\_finalize} & cierra la sesión y libera los recursos \\
+\code{DSM\_strerror} & el texto de un código de error \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{DSM\_acquire} devuelve un puntero al marco local, y ese puntero es válido
+hasta el \code{DSM\_release} correspondiente. Entre los dos, la aplicación
+trabaja con instrucciones de memoria comunes. Fuera de ese intervalo no hay
+promesa ninguna sobre el contenido del marco.
+
+El trabajador tiene un hilo receptor además del de la aplicación, porque una
+invalidación puede llegar mientras la aplicación no está dentro de ninguna
+llamada. Ese hilo es el único que lee del socket, y la aplicación nunca lo
+hace: una sola llamada en vuelo por vez, anotada antes de enviar la solicitud,
+y cualquier trama que no corresponda a lo anotado es un error de protocolo,
+porque el coordinador no manda respuestas que nadie pidió.

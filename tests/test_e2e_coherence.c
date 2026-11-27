@@ -24,6 +24,8 @@
 #include "test_proc.h"
 #include "test_util.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define NODOS        3u
@@ -157,6 +159,37 @@ static bool acks_antes_del_grant(const struct csv *c) {
     return true;
 }
 
+/* Copia el registro a donde diga DSM_TRAZA, si está puesta. No afecta el
+ * resultado de la prueba: un fallo al copiar se avisa y se sigue, porque lo
+ * que la prueba juzga ya se juzgó sobre el archivo original. */
+static void copiar_traza(const char *origen) {
+    const char *destino = getenv("DSM_TRAZA");
+    FILE *in, *out;
+    char buf[4096];
+    size_t n;
+
+    if (destino == NULL || destino[0] == '\0')
+        return;
+    if ((in = fopen(origen, "rb")) == NULL) {
+        fprintf(stderr, "  DSM_TRAZA: no se pudo leer %s\n", origen);
+        return;
+    }
+    if ((out = fopen(destino, "wb")) == NULL) {
+        fprintf(stderr, "  DSM_TRAZA: no se pudo escribir %s\n", destino);
+        fclose(in);
+        return;
+    }
+    while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) {
+            fprintf(stderr, "  DSM_TRAZA: escritura incompleta en %s\n", destino);
+            break;
+        }
+    }
+    fclose(in);
+    if (fclose(out) != 0)
+        fprintf(stderr, "  DSM_TRAZA: no se pudo cerrar %s\n", destino);
+}
+
 static bool test_three_nodes_two_readers_then_a_writer(void) {
     char clog[] = "/tmp/e2e_coherence_XXXXXX";
     struct proc_coord co;
@@ -212,6 +245,13 @@ static bool test_three_nodes_two_readers_then_a_writer(void) {
         }
     }
 
+    /* Este es el único escenario del proyecto donde un escritor pide una
+     * página que hay lectores reteniendo, así que es el único registro que
+     * contiene una transición READ a WRITE completa. El informe la cita, y
+     * para que quien lo lea pueda regenerarla sin editar código, con
+     * DSM_TRAZA=<ruta> el registro se copia ahí antes de borrarse. Sin la
+     * variable no cambia nada. */
+    copiar_traza(clog);
     unlink(clog);   /* en todos los caminos, también al fallar */
     return ok;
 }
