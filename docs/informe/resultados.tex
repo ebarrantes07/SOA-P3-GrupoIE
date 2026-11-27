@@ -1,0 +1,132 @@
+\section{Evaluación experimental}
+
+Las medidas salen de 160 corridas sobre 16 configuraciones, diez repeticiones
+cada una, en un equipo con procesador Intel Core i7-1260P de 16 hilos, núcleo
+Linux 6.18 bajo WSL2, GCC 13.3.0, glibc 2.39 y Python 3.12.3. Ninguna corrida
+quedó descartada.
+
+Antes de cada configuración se corre una repetición de calentamiento que se
+descarta y queda declarada en el registro de la corrida. No es cosmética: la
+primera corrida después de compilar llegó a medir la mitad que las siguientes
+para el mismo trabajo, y promediarla habría metido el estado frío de la caché
+dentro del resultado.
+
+Las métricas de tráfico no las informa la aplicación: se derivan del registro
+del coordinador. Los bytes incluyen los 32 de cabecera de cada trama, y la
+página se cuenta una sola vez por transmisión. La desviación es la muestral.
+
+\subsection{Localidad de lectura}
+
+Un escritor publica una versión y un lector hace $M$ lecturas de la página
+entera. Lo único que cambia es cuándo pide permiso: una sola adquisición para
+las $M$ lecturas, o una por lectura. El trabajo local es idéntico en los dos
+casos y está medido: las mismas $M$ verificaciones de 4096 bytes.
+
+\begin{table*}[t]
+\caption{Localidad de lectura con dos nodos y un lector.}
+\label{tab:localidad}
+\centering
+\small
+\input{tablas/localidad}
+\end{table*}
+
+La última columna es el resultado: \textbf{tres páginas transferidas en los
+seis casos}. Pedir permiso 64 veces en vez de una no mueve un solo byte de
+datos extra en concepto de página; mueve mensajes. El tiempo pasa de 0,69 a
+8,06~ms, 11,7 veces más, y los mensajes de 22 a 274.
+
+La otra mitad del resultado es la fila que no cambia. Con una sola
+adquisición, el costo en mensajes es 22 con 1, con 8 y con 64 lecturas: una
+vez que el permiso está, leer es gratis en la red. La figura~\ref{fig:localidad}
+muestra las dos cosas a la vez.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.86\textwidth]{figuras/fig1_localidad.pdf}
+\caption{Mensajes y bytes según cuántas lecturas caben en una adquisición.}
+\label{fig:localidad}
+\end{figure*}
+
+Los 13\,160 bytes de base no son del experimento: son el establecimiento de la
+sesión, la publicación del escritor y las barreras. Por eso el crecimiento
+relativo en bytes (1,7 veces) es mucho menor que el crecimiento en mensajes
+(12,5 veces): lo que se agrega son tramas de 40 bytes, no páginas de 4096.
+
+\subsection{Falso compartimiento}
+
+Cada nodo incrementa \emph{su propio} contador 50 veces. Nadie lee el contador
+de otro. Lo único que cambia entre los dos diseños es dónde viven los
+contadores: todos en la página 0, u uno por página. El trabajo lógico es el
+mismo y también está medido: 50 adquisiciones de escritura y 50 incrementos
+por nodo en los dos diseños.
+
+\begin{table*}[t]
+\caption{Falso compartimiento con 50 rondas. El tiempo es el del nodo más
+lento. Los bytes de coordinación son los de las barreras que ordenan las
+rondas.}
+\label{tab:fs}
+\centering
+\small
+\input{tablas/false_sharing}
+\end{table*}
+
+Compartir la página cuesta 1,57 veces el tiempo con dos nodos y 2,40 con
+cuatro, para un trabajo que la aplicación considera independiente. Las
+invalidaciones pasan de cero a 96 y a 198,6 en promedio, los bytes de
+coherencia casi se duplican y las páginas transferidas también.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.86\textwidth]{figuras/fig2_false_sharing.pdf}
+\caption{Invalidaciones y bytes según dónde viven contadores independientes.}
+\label{fig:fs}
+\end{figure*}
+
+La columna que cierra el argumento es la última. Los bytes de coordinación son
+\emph{idénticos} entre los dos diseños: 8\,160 con dos nodos y 16\,320 con
+cuatro, en los dos casos. Las barreras que ordenan las rondas son las mismas,
+así que no explican ninguna parte de la diferencia. Lo que cambia es
+exclusivamente el tráfico de coherencia, y cambia porque la unidad de
+coherencia es la página y no el dato.
+
+\subsection{Costo de distribución}
+
+La serie de Leibniz para $\pi$ con el mismo $T$ repartido entre $N$ nodos. Se
+informan por separado el tiempo de la fase de cálculo y publicación, el total
+de la sesión, y el de la serie secuencial de referencia que el nodo 0 calcula
+para verificarse.
+
+\begin{table*}[t]
+\caption{Costo de distribución. La escala compara la fase de cálculo contra
+la de un solo nodo con el mismo $T$.}
+\label{tab:dist}
+\centering
+\small
+\input{tablas/distribucion}
+\end{table*}
+
+Con $T$ grande la fase de cálculo escala 1,72 veces con dos nodos y 2,91 con
+cuatro. El total baja mucho menos —de 712 a 568~ms— porque arrastra el
+establecimiento de la sesión, las barreras y la serie de referencia, que no se
+reparten entre nadie.
+
+Con $T$ pequeño distribuir \emph{empeora} todo: el total sube de 1,32 a
+2,56~ms al pasar de uno a cuatro nodos, y los bytes se multiplican por 4,4
+mientras el cálculo tampoco baja. No hay nada que repartir, y lo único que se
+mide es el costo de arrancar.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.86\textwidth]{figuras/fig3_distribucion.pdf}
+\caption{Tiempo total y de la fase de cálculo contra la cantidad de nodos,
+con la serie secuencial de referencia punteada. Cada panel tiene su escala.}
+\label{fig:dist}
+\end{figure*}
+
+Hay una columna que no se puede leer como se leería en un banco de pruebas
+limpio. El tiempo de la serie secuencial \emph{crece con $N$} —350~ms con un
+nodo, 442 con cuatro— aunque el trabajo sea exactamente el mismo $T$. Esa
+serie la calcula el nodo 0 mientras los demás procesos de la sesión están
+vivos en la misma máquina, así que lo que mide de más es contención del
+equipo, no del protocolo. La comparación que se sostiene es cálculo contra
+cálculo, que es la que informa la columna de escala y la que dibuja la figura.

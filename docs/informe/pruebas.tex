@@ -1,0 +1,78 @@
+\section{Pruebas y verificación}
+
+\code{make test} corre 192 casos repartidos en 18 ejecutables de prueba y 8
+guiones de punta a punta. Termina en unos 23 segundos, y esa rapidez es
+deliberada: una suite que tarda deja de correrse.
+
+Las capas se prueban por separado y con criterios distintos.
+
+\emph{El transporte} se prueba contra la fragmentación, que es el error
+clásico de quien da por sentado que una escritura es una lectura. Una trama
+partida en 4136 pedazos de un byte, dos tramas en una sola lectura, una trama
+a medias al cerrar: en los tres casos el receptor tiene que reconstruir
+exactamente lo que se mandó o decir que no pudo.
+
+\emph{El directorio} se prueba sin sockets. Es una máquina de estados pura
+—recibe una operación, devuelve acciones a emitir— y eso permite recorrer sus
+transiciones sin levantar procesos. Después de cada una se llama a la función
+de invariantes.
+
+\emph{El protocolo completo} se prueba con procesos de verdad, porque hay
+afirmaciones que solo existen en el orden de los eventos. La coexistencia de
+lectores y la precedencia de las confirmaciones sobre el \emph{grant} no se
+pueden comprobar mirando el estado final: se comprueban sobre el registro del
+coordinador, que es el único lugar donde los tres nodos aparecen en una sola
+secuencia.
+
+Esa prueba crea el escenario con esperas —los lectores retienen la página un
+rato y el escritor pide a un tercio de ese rato— pero no verifica ningún
+tiempo. Verifica el orden de las filas, y una de sus afirmaciones es que el
+solapamiento efectivamente ocurrió. Si las esperas no alcanzaran en una
+máquina lenta, la prueba falla en vez de pasar sin haber probado nada.
+
+\subsection{Sanitizadores}
+
+La suite se corre además bajo AddressSanitizer con UndefinedBehaviorSanitizer,
+y por separado bajo ThreadSanitizer. Van en objetivos aparte porque los dos
+juegos de instrumentación no conviven, y cada uno limpia el árbol antes y
+después: los objetos instrumentados comparten directorio con los normales, y
+sin esa limpieza una corrida posterior usaría binarios instrumentados sin
+avisar.
+
+\subsection{El verificador}
+
+Un registro de coordinador se puede leer de dos maneras: confiando en lo que
+el coordinador dice de sí mismo, o reconstruyendo el estado desde los eventos
+y comparándolo. El verificador hace lo segundo. Levanta su propio modelo de
+quién tiene qué a partir de la secuencia de eventos, y comprueba contra él las
+columnas de estado que el coordinador escribió. Si leyera el estado del
+directorio no estaría verificando nada: estaría repitiendo la afirmación que
+quiere comprobar.
+
+Lo mismo vale para las métricas de tráfico. Las páginas transferidas y las
+invalidaciones se reconstruyen desde los eventos y se cruzan contra las
+columnas acumuladas, y los bytes por grupo contra el total. Si alguna de las
+tres identidades no cierra, la corrida se informa marcada y queda fuera de las
+estadísticas, con el motivo escrito.
+
+\subsection{Lo que se rompió a propósito}
+
+Una prueba que nunca falla no demuestra nada, así que el verificador se somete
+a registros adulterados: una fila con un lector de más, una versión que
+retrocede, un \emph{grant} adelantado a su confirmación. Tiene que rechazar
+cada uno y nombrar cuál.
+
+El mismo criterio se aplica a las herramientas del experimento. Cada
+comprobación que se agregó después de encontrar un defecto viene con el
+defecto reintroducido como mutante, y la prueba tiene que volver a
+encontrarlo. Sin ese paso, una comprobación nueva solo demuestra que el código
+actual le gusta.
+
+\subsection{Lo que no se pudo verificar}
+
+ThreadSanitizer no cubre las carreras entre procesos: observa un espacio de
+direcciones por vez, y acá el estado compartido está en el socket. Las
+condiciones de carrera entre nodos se buscaron corriendo la suite completa
+ocho veces seguidas con los tiempos alterados, que detecta la dependencia de
+orden pero no prueba su ausencia. Queda declarado como límite y no como
+cobertura.

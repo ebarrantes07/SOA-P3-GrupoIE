@@ -1,0 +1,56 @@
+\section{Límites de alcance}
+
+El sistema está pensado para que una sesión termine bien o termine; no para
+que sobreviva a la pérdida de un participante. Conviene decir con precisión
+qué significa eso, porque es la diferencia entre una limitación conocida y una
+promesa incumplida.
+
+\emph{No hay reconexión.} Un nodo que pierde la conexión no vuelve. No existe
+un procedimiento para que se reincorpore con su estado, ni un identificador
+que le permita reclamar lo que tenía. El conjunto de participantes se fija al
+abrir la sesión y solo puede reducirse.
+
+\emph{No hay recuperación de escrituras no publicadas.} Lo que un nodo escribió
+en su marco local y todavía no liberó existe únicamente en su memoria. Si el
+proceso muere con un permiso de escritura tomado, ese trabajo se pierde entero
+y no hay forma de reconstruirlo: el coordinador nunca lo vio.
+
+\emph{No hay persistencia.} Los datos confirmados viven en la memoria del
+coordinador. Cuando la sesión termina, el contenido de las páginas desaparece.
+No hay volcado a disco, ni bitácora de escrituras, ni manera de retomar una
+sesión anterior.
+
+\emph{No hay tolerancia a particiones.} Una red que se divide no produce dos
+mitades que sigan trabajando: produce nodos que dejan de alcanzar al
+coordinador y que, por lo tanto, dejan de poder adquirir nada. No hay quórum,
+ni elección, ni reconciliación posterior.
+
+Lo que sí hay es un corte limpio, y se distingue según cómo ocurra la pérdida.
+
+Si el coordinador recibe una señal de terminación, avisa: le encola un error
+de sesión abortada a cada nodo vivo, vacía las salidas con un tope, y recién
+entonces cierra. Cada trabajador recibe un código que dice qué pasó, en vez de
+descubrirlo cuando una lectura falla.
+
+Si el coordinador muere sin ejecutar una instrucción más, no hay aviso posible
+y tampoco hace falta inventarlo: el núcleo cierra sus sockets, el cierre llega
+a cada trabajador y todos lo ven en el acto. Ésa es toda la garantía que se
+puede dar en ese caso, y alcanza para que nadie quede esperando.
+
+Del lado del trabajador, un error de sesión es terminal. La biblioteca rechaza
+localmente todo lo que puede detectar antes de enviarlo —página fuera de
+rango, modo inválido, adquisición anidada—, así que un error que llega desde
+el coordinador a un trabajador correcto solo puede venir de un defecto. Seguir
+operando sobre un estado que no se entiende es peor que terminar: lo que se
+corrompe es la memoria compartida, y el síntoma aparecería lejos de la causa.
+
+Hay además tres límites de tamaño que no son fallas sino decisiones fijadas en
+tiempo de compilación: la página mide 4096 bytes, la sesión admite a lo sumo
+cuatro nodos, y la cantidad de páginas se fija al arrancar y no cambia. El
+primero es el que más se nota en los resultados, porque es la unidad de
+coherencia y por lo tanto el tamaño del falso compartimiento. Comparar otro
+tamaño de página era una de las ampliaciones posibles del enunciado y no se
+hizo; el código la admite —el tamaño es una constante de compilación y no hay
+ningún valor literal que dependa de ella— pero las pruebas sí dan por sentado
+el tamaño actual, de modo que una construcción con otro valor sirve para medir
+y no para correr la suite.

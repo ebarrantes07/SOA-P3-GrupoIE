@@ -2386,3 +2386,107 @@ su punto, llevan una guía fina hasta él.
 Medido sobre 50 corridas reales: con el mismo trabajo, compartir la página cuesta 2,1× el tiempo
 con dos nodos y 2,4× con cuatro; y la fase de cálculo de π escala 3,75× con cuatro nodos cuando T
 es grande, mientras que con T chico distribuir empeora todo porque lo que se mide es el arranque.
+
+---
+
+## D9.1 — El entorno que se publica dice con qué se corrió, no en qué máquina
+
+- **Fecha:** 2026-11-26
+- **Issue:** [#10](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/10)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide reportar la configuración de hardware y software junto con las medias y las
+desviaciones, y por eso cada corrida graba su entorno en el JSON. Los resultados que el informe
+necesita reproducir se versionan en `results/seleccionados/`, así que ese campo no queda en una
+máquina: entra al repositorio y al documento que se entrega.
+
+`platform.uname()` devuelve seis componentes y el segundo es el nombre del equipo. El campo quedaba
+así: `Linux <nombre-del-equipo> 6.18.33.2-microsoft-standard-WSL2 ...`. Nadie lo puso ahí a
+propósito; vino de armar la cadena con todo lo que la función devuelve.
+
+### Decisión
+
+**El entorno informa sistema, núcleo, arquitectura, CPU, cantidad de hilos, gcc, glibc y python, y
+omite el nombre de la máquina.** La omisión es deliberada y por eso está comentada en el código: el
+nombre identifica al dueño del equipo y no hace falta para reproducir nada. Todo lo demás se
+conserva entero, incluida la versión completa del núcleo, que sí explica diferencias de tiempo.
+
+La alternativa era recortar el campo al momento de escribir el informe. Se descartó porque deja el
+nombre en todos los JSON del repositorio y confía en que alguien se acuerde de limpiarlo en cada
+revisión del documento. Recortarlo en el origen significa que ningún resultado futuro lo contiene.
+
+### Consecuencias
+
+- Los resultados grabados **antes** de este cambio sí lo tienen. La matriz que alimenta el informe
+  se volvió a correr después, y es la única cuyos JSON se versionan.
+- El análisis compara entornos por firma para avisar si dos repeticiones no comparten máquina. Esa
+  comprobación sigue funcionando: el núcleo, la CPU y el compilador distinguen dos equipos distintos
+  sin necesidad del nombre. Lo que ya no distingue son dos equipos idénticos, que para comparar
+  tiempos es justamente lo que no hace falta distinguir.
+
+### Verificación
+
+- `e2e_experimento.sh` comprueba, en cada una de las 16 corridas de la matriz mínima, que el
+  entorno traiga sus seis campos y que **ninguno de los nombres que el sistema se da a sí mismo**
+  (`platform.node()`, `socket.gethostname()` y su primer componente) aparezca en `uname`.
+- Mutante: devolver `" ".join(platform.uname())` como estaba. La prueba lo reporta en las 16
+  corridas y el script termina en 1.
+
+---
+
+## D9.2 — Lo que una figura solo dice cuando alguien la mira
+
+- **Fecha:** 2026-11-26
+- **Issue:** [#10](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/10)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+En el entorno de desarrollo no hay con qué rasterizar SVG —ni `rsvg-convert`, ni Inkscape, ni
+ImageMagick, ni un navegador sin cabeza—, así que `e2e_graficas.sh` comprueba por cálculo lo que un
+ojo verificaría: XML válido, nada fuera del lienzo, ningún NaN, la cantidad de marcas que los datos
+piden, la leyenda presente y las etiquetas del extremo a 12 px o más entre sí.
+
+Las figuras finales se miraron en pantalla antes de entrar al informe. Aparecieron tres defectos
+que todas esas comprobaciones daban por buenos, porque ninguna preguntaba si un elemento **tapa** a
+otro.
+
+### Decisión
+
+**Lo que se dibuja encima importa tanto como dónde se dibuja, y por eso ahora se comprueba.**
+
+- *La etiqueta de la referencia se coloca después de los puntos y los esquiva.* Antes se dibujaba
+  al empezar el panel, en el borde izquierdo, y el marcador del primer punto —que cae justo en ese
+  borde— la pisaba: en la figura de distribución «secuencial» se leía «secuencia». Ahora se prueba
+  el borde izquierdo, después a la derecha de cada estorbo, y si no entra, el otro lado de la
+  línea; los estorbos son los marcadores y también los segmentos de las series, porque una línea
+  que cruza el texto lo hace ilegible igual que un punto.
+- *La barra de error se dibuja sobre el marcador, no debajo.* El halo opaco del marcador mide 6,5
+  de radio y se tragaba entera cualquier desviación menor que eso. Con n=10 las desviaciones chicas
+  son el resultado, y se veían igual que una medición sin barra de error.
+- *La leyenda se escribe en español.* La figura de falso compartimiento imprimía el valor de
+  configuración crudo, «shared / separate», bajo un subtítulo en español.
+- *Los decimales siguen la magnitud, y el separador es la coma.* Dos decimales en todo lo no entero
+  ponía «198.60» al lado de «96» en la misma figura, y son invalidaciones: una cuenta no se mide en
+  centésimas.
+
+### Consecuencias
+
+- La comprobación de superposición vale para las figuras que hay. Una figura futura con otra
+  disposición podría tener un choque que esta prueba no contemple; la conclusión que queda es que
+  **las figuras se miran antes de entregarlas**, y la prueba sirve para que un defecto ya visto no
+  vuelva.
+- El emparejamiento entre una barra de error y su marcador se hace por el centro de la barra y no
+  por superposición. Con dos series que convergen —el caso que la figura 3 tiene a propósito—, la
+  barra de una contiene el marcador de la otra, y emparejarlas por superposición daba un falso
+  positivo.
+
+### Verificación
+
+- `e2e_graficas.sh` comprueba, sobre la figura de distribución, que ningún marcador caiga sobre el
+  recuadro de una etiqueta de referencia y que cada marcador se dibuje antes que su propia barra.
+- Mutantes: devolver la barra de error al orden anterior lo reporta en los 12 marcadores; devolver
+  la etiqueta al borde izquierdo sin esquivar nada lo reporta en los 3 choques que los datos de
+  prueba producen. En los dos casos el script termina en 1.

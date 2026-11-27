@@ -77,7 +77,7 @@ SANENV  := ASAN_OPTIONS=detect_leaks=1 \
            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
 TSANENV := TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
 
-.PHONY: all test test-san test-tsan test-robustez clean
+.PHONY: all test test-san test-tsan test-robustez clean informe
 
 # Sin esto make trata los .o como intermedios de las reglas de patrón y los
 # borra al final de cada invocación, así que cada `make test` recompilaría
@@ -171,6 +171,16 @@ test-robustez: all $(TEST_BIN)
 		echo "make test-robustez: las 8 pasadas pasaron"; \
 	fi; \
 	exit $$rc
+
+# El informe. Fuera del camino de `make test` a propósito: compilarlo pide
+# LaTeX, que no hace falta ni para construir el proyecto ni para probarlo.
+# Deja el PDF en docs/informe.pdf y dice cuántas secciones siguen sin escribir.
+informe:
+	@command -v pdflatex >/dev/null || { echo "falta pdflatex; ver docs/informe/README.md" >&2; exit 1; }
+	cd docs/informe && pdflatex -interaction=nonstopmode main.tex >/dev/null && bibtex main >/dev/null && pdflatex -interaction=nonstopmode main.tex >/dev/null && pdflatex -interaction=nonstopmode main.tex >/dev/null
+	@cp docs/informe/main.pdf docs/informe.pdf
+	@grep -a "Output written" docs/informe/main.log
+	@echo "secciones sin escribir: $$(grep -a -c 'PENDIENTE:' docs/informe/main.log)"
 
 clean:
 	rm -rf $(OBJDIR) $(BINS)
