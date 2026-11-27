@@ -2386,3 +2386,50 @@ su punto, llevan una guía fina hasta él.
 Medido sobre 50 corridas reales: con el mismo trabajo, compartir la página cuesta 2,1× el tiempo
 con dos nodos y 2,4× con cuatro; y la fase de cálculo de π escala 3,75× con cuatro nodos cuando T
 es grande, mientras que con T chico distribuir empeora todo porque lo que se mide es el arranque.
+
+---
+
+## D9.1 — El entorno que se publica dice con qué se corrió, no en qué máquina
+
+- **Fecha:** 2026-11-26
+- **Issue:** [#10](https://github.com/ebarrantes07/SOA-P3-GrupoIE/issues/10)
+- **Quién decide:** Emmanuel
+
+### Contexto
+
+El enunciado pide reportar la configuración de hardware y software junto con las medias y las
+desviaciones, y por eso cada corrida graba su entorno en el JSON. Los resultados que el informe
+necesita reproducir se versionan en `results/seleccionados/`, así que ese campo no queda en una
+máquina: entra al repositorio y al documento que se entrega.
+
+`platform.uname()` devuelve seis componentes y el segundo es el nombre del equipo. El campo quedaba
+así: `Linux <nombre-del-equipo> 6.18.33.2-microsoft-standard-WSL2 ...`. Nadie lo puso ahí a
+propósito; vino de armar la cadena con todo lo que la función devuelve.
+
+### Decisión
+
+**El entorno informa sistema, núcleo, arquitectura, CPU, cantidad de hilos, gcc, glibc y python, y
+omite el nombre de la máquina.** La omisión es deliberada y por eso está comentada en el código: el
+nombre identifica al dueño del equipo y no hace falta para reproducir nada. Todo lo demás se
+conserva entero, incluida la versión completa del núcleo, que sí explica diferencias de tiempo.
+
+La alternativa era recortar el campo al momento de escribir el informe. Se descartó porque deja el
+nombre en todos los JSON del repositorio y confía en que alguien se acuerde de limpiarlo en cada
+revisión del documento. Recortarlo en el origen significa que ningún resultado futuro lo contiene.
+
+### Consecuencias
+
+- Los resultados grabados **antes** de este cambio sí lo tienen. La matriz que alimenta el informe
+  se volvió a correr después, y es la única cuyos JSON se versionan.
+- El análisis compara entornos por firma para avisar si dos repeticiones no comparten máquina. Esa
+  comprobación sigue funcionando: el núcleo, la CPU y el compilador distinguen dos equipos distintos
+  sin necesidad del nombre. Lo que ya no distingue son dos equipos idénticos, que para comparar
+  tiempos es justamente lo que no hace falta distinguir.
+
+### Verificación
+
+- `e2e_experimento.sh` comprueba, en cada una de las 16 corridas de la matriz mínima, que el
+  entorno traiga sus seis campos y que **ninguno de los nombres que el sistema se da a sí mismo**
+  (`platform.node()`, `socket.gethostname()` y su primer componente) aparezca en `uname`.
+- Mutante: devolver `" ".join(platform.uname())` como estaba. La prueba lo reporta en las 16
+  corridas y el script termina en 1.

@@ -37,7 +37,7 @@ fi
 echo "   OK: $(tail -1 "$TMP/out")"
 
 python3 -I - "$TMP/r" <<'PY'
-import glob, json, os, sys
+import glob, json, os, platform, socket, sys
 
 raiz = sys.argv[1]
 fallas = []
@@ -90,6 +90,19 @@ for exp, configs in ESPERADAS.items():
         cal = os.path.join(d, doc["calentamiento_descartado"])
         if not os.path.isfile(cal):
             fallas.append("%s: el calentamiento declarado no existe" % base)
+        # El entorno se publica en el informe y en el repo: no debe llevar el
+        # nombre de la máquina, que identifica a su dueño y no hace falta para
+        # reproducir nada. Lo que sí debe llevar es con qué se compiló y corrió.
+        ent = doc["entorno"]
+        nombres = {platform.node(), socket.gethostname(),
+                   socket.gethostname().split(".")[0]}
+        for nombre in sorted(n for n in nombres if n):
+            if nombre in ent.get("uname", ""):
+                fallas.append("%s: el entorno lleva el nombre de la máquina "
+                              "(%r en uname)" % (base, nombre))
+        for clave in ("uname", "cpu", "nproc", "gcc", "glibc", "python"):
+            if not ent.get(clave):
+                fallas.append("%s: el entorno no informa %s" % (base, clave))
         if exp == "localidad":
             lector = doc["salida_por_nodo"][1]
             # `salida` tiene que ser la del lector, no la del escritor: es la
@@ -110,7 +123,8 @@ for f in fallas:
     print("   FALLO: " + f)
 if not fallas:
     print("   OK: contrato completo en las %d corridas, calentamientos "
-          "declarados, localidad con 1 y M adquisiciones"
+          "declarados, entorno completo y sin el nombre de la máquina, "
+          "localidad con 1 y M adquisiciones"
           % (sum(ESPERADAS.values()) * REPS))
 sys.exit(1 if fallas else 0)
 PY

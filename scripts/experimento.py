@@ -113,8 +113,13 @@ def entorno():
         glibc = os.confstr("CS_GNU_LIBC_VERSION")
     except (ValueError, OSError, AttributeError):
         pass
+    # El nombre de la máquina (`platform.uname().node`) se omite a propósito:
+    # identifica al dueño del equipo y no aporta nada a la reproducibilidad.
+    # Lo que el enunciado pide —sistema, núcleo y arquitectura— queda entero.
+    u = platform.uname()
     return {
-        "uname": " ".join(platform.uname()),
+        "uname": " ".join(c for c in (u.system, u.release, u.version,
+                                      u.machine, u.processor) if c),
         "cpu": cpu,
         "nproc": os.cpu_count(),
         "gcc": primera_linea(["gcc", "--version"]),
