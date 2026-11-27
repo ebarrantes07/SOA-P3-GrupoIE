@@ -77,6 +77,40 @@ que no coexistan lectores ni copias ajenas con un escritor, que cada concesión 
 después de todos los ACK de invalidación que requería, que las versiones no retrocedan y que un ACK
 repetido no cierre una ronda.
 
+Del mismo registro salen las métricas de una corrida:
+
+```bash
+./scripts/metricas.py registro.csv
+```
+
+Informa mensajes, bytes (con las cabeceras incluidas), páginas transferidas, invalidaciones y
+adquisiciones, separando el tráfico del protocolo de coherencia del de la coordinación
+experimental. Comprueba tres identidades antes de informar —las páginas y las invalidaciones
+derivadas de los eventos contra las columnas acumuladas, y los bytes por grupo contra el total— y
+marca la corrida si alguna no cierra, en vez de dar un número que no se sostiene.
+
+Y de los resultados de una matriz de experimentos sale el resumen por configuración:
+
+```bash
+./scripts/analisis.py results/
+```
+
+Agrupa las repeticiones de cada configuración e informa media, desviación estándar muestral y n
+de cada métrica, tomando el tráfico del registro de cada corrida. Ninguna corrida se descarta en
+silencio: una que no terminó en 0, o cuyo tráfico no cuadra, sale de las estadísticas pero se
+informa con su nombre y su motivo.
+
+Y de ese resumen salen las figuras del informe:
+
+```bash
+./scripts/analisis.py --json results/ | ./scripts/graficas.py --out results/
+```
+
+Tres SVG, uno por experimento: localidad de lectura, falso compartimiento y costo de
+distribución. Sin dependencias —los scripts siguen usando solo la biblioteca estándar— y con la
+desviación dibujada sobre cada marca. Si a los datos les falta una métrica, la figura no se
+dibuja y se dice cuál faltó.
+
 ## Organización del repositorio
 
 ```
