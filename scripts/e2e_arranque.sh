@@ -163,6 +163,8 @@ rechaza_args "app_pi con --terms 2^52+1" \
              "$PI" --port 9 --nodes 2 --id 0 --terms 4503599627370497
 rechaza_args "app_rw con --versions 0"        "$RW" --port 9 --nodes 2 --id 0 --versions 0
 rechaza_args "app_rw con --page 256"          "$RW" --port 9 --nodes 2 --id 0 --page 256
+rechaza_args "app_rw con --reads 0"           "$RW" --port 9 --nodes 2 --id 0 --reads 0
+rechaza_args "app_rw con --access zzz"        "$RW" --port 9 --nodes 2 --id 0 --access zzz
 rechaza_args "app_granularity con --layout zzz" \
              "$GRAN" --port 9 --nodes 2 --id 0 --layout zzz
 rechaza_args "app_granularity con --rounds 0" \
