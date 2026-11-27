@@ -37,3 +37,14 @@ results/*
 *.swp
 __pycache__/
 .venv/
+
+# LaTeX: los auxiliares del informe se regeneran con `make informe`. El PDF
+# que se entrega sí se versiona, en docs/informe.pdf, y las figuras en PDF
+# también: así compilar el informe no necesita convertidor de SVG.
+docs/informe/*.aux
+docs/informe/*.bbl
+docs/informe/*.blg
+docs/informe/*.log
+docs/informe/*.out
+docs/informe/*.toc
+docs/informe/main.pdf

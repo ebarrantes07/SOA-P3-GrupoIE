@@ -1,0 +1,109 @@
+\documentclass[journal]{IEEEtran}
+
+% ===================
+% Paquetes
+% ===================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands,es-tabla]{babel}
+\usepackage{amsmath, amsfonts, amssymb}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage[hyphens]{url}
+\usepackage{tikz}
+\usetikzlibrary{babel,arrows.meta,positioning,fit,calc}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage[noend]{algorithmic}
+% [H] fija tablas y algoritmos donde se escriben, entre su párrafo de
+% introducción y su explicación.
+\usepackage{float}
+% Sin esto IEEEtran estira los espacios verticales para llenar la columna
+% cuando un float [H] pasa a la siguiente, y quedan huecos grandes.
+\raggedbottom
+% Pseudocódigo en español.
+\floatname{algorithm}{Algoritmo}
+\renewcommand{\algorithmicif}{\textbf{si}}
+\renewcommand{\algorithmicthen}{\textbf{entonces}}
+\renewcommand{\algorithmicelse}{\textbf{si no}}
+\renewcommand{\algorithmicelsif}{\algorithmicelse\ \algorithmicif}
+\renewcommand{\algorithmicendif}{\textbf{fin si}}
+\renewcommand{\algorithmicwhile}{\textbf{mientras}}
+\renewcommand{\algorithmicdo}{\textbf{hacer}}
+\renewcommand{\algorithmicendwhile}{\textbf{fin mientras}}
+\renewcommand{\algorithmicrepeat}{\textbf{repetir}}
+\renewcommand{\algorithmicuntil}{\textbf{hasta}}
+\renewcommand{\algorithmiccomment}[1]{\hfill$\triangleright$~#1}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+
+% Bloque de "pendiente" bien visible en el PDF, para las secciones todavía
+% sin escribir. Se reemplaza por contenido real antes de la entrega: el PDF
+% entregado no debe contener ninguno (buscar "PENDIENTE" en main.log).
+\newcommand{\pendiente}[1]{%
+  \begin{quote}\small\color{black!60}%
+  \textbf{[PENDIENTE --- #1]}
+  \end{quote}%
+  \typeout{PENDIENTE: #1}%
+}
+
+% Nombres de código en el texto.
+\newcommand{\code}[1]{\texttt{#1}}
+
+% IEEEtran pone "Index Terms" en inglés.
+\renewcommand{\IEEEkeywordsname}{Palabras clave}
+
+% ===================
+% Título y autores
+% ===================
+\title{\LARGE Memoria Compartida Distribuida en Espacio de Usuario:\\
+Contrato Expl\'icito, Coherencia por P\'agina y Evaluaci\'on Experimental}
+
+\author{
+    Isaac Francisco Moreno Fuentes,~\\
+    Emmanuel Barrantes Vargas\\
+    \thanks{Isaac Francisco Moreno Fuentes y Emmanuel Barrantes Vargas son estudiantes del curso MC 6004 Sistemas Operativos Avanzados, Tecnológico de Costa Rica, II semestre 2026.}
+}
+
+% ===================
+% Documento
+% ===================
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\pendiente{resumen: qué se construyó, con qué garantía, cómo se verificó y
+el resultado más fuerte de los experimentos, en unas 150 palabras}
+\end{abstract}
+
+\begin{IEEEkeywords}
+memoria compartida distribuida, coherencia por página, exclusión mutua,
+invalidación, falso compartimiento
+\end{IEEEkeywords}
+
+% ===================
+% Secciones
+% ===================
+\input{introduccion}
+\input{arquitectura}
+\input{protocolo}
+\input{pruebas}
+\input{resultados}
+\input{analisis}
+\input{comparacion}
+\input{decisiones}
+\input{limitaciones}
+\input{conclusiones}
+\input{declaracion_transparencia}
+\input{entrega}
+
+% ===================
+% Referencias
+% ===================
+\bibliographystyle{IEEEtran}
+\bibliography{referencias}
+
+\end{document}
