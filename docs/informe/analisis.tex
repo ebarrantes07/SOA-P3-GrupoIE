@@ -1,10 +1,132 @@
 \section{Preguntas de análisis}
 
-\pendiente{qué garantiza la exclusión por página y qué no garantiza para una operación sobre varias páginas; por qué una barrera final no corrige incrementos perdidos}
+\subsection{Exclusión por página y operaciones sobre varias páginas}
 
-\pendiente{ventajas del coordinador central para razonar sobre corrección; dónde aparecen cuellos de botella y puntos únicos de fallo}
+La exclusión por página garantiza que, mientras un nodo tiene permiso de
+escritura sobre una página, ningún otro la lee ni la escribe, y que lo que
+publique será visible para quien adquiera después con una versión mayor. Es
+una garantía \emph{por página y por intervalo}: vale entre el
+\code{DSM\_acquire} y el \code{DSM\_release} de esa página.
 
-\pendiente{cómo cambia el tráfico cuando varios datos independientes comparten página; cuándo conviene replicar lecturas y cuándo encarece escribir}
+No garantiza nada sobre una operación que abarque varias páginas. Si un nodo
+adquiere la página 0, la modifica, la libera, y después adquiere la página 1,
+otro nodo pudo haber escrito la página 1 en el medio —o haber leído la 0 ya
+modificada y la 1 todavía vieja. Las dos escrituras son atómicas por separado
+y el conjunto no lo es. El protocolo no ofrece ninguna forma de adquirir dos
+páginas como una unidad, y adquirirlas de a una en orden fijo evita el
+interbloqueo pero no produce atomicidad: solo evita que dos nodos se esperen
+en círculo.
 
-\pendiente{qué costos oculta la interfaz de memoria compartida, y qué trabajo adicional requeriría recuperar la transparencia por fallos de página}
+Una barrera final no corrige incrementos perdidos porque una barrera es una
+afirmación sobre el \emph{tiempo}, no sobre el \emph{contenido}. Dice que
+todos llegaron a este punto; no dice qué hizo cada uno antes de llegar. Si dos
+nodos leyeron el valor 7, le sumaron uno y publicaron 8, el 8 es el valor
+confirmado y la barrera posterior lo deja exactamente así. El incremento se
+perdió en el momento en que el segundo nodo leyó antes de que el primero
+publicara, y nada que ocurra después puede saber que ese 9 debió existir.
 
+La forma de no perderlo es que la lectura y la escritura ocurran dentro del
+mismo intervalo de escritura: adquirir en modo \code{WRITE}, leer, sumar y
+liberar. Entonces el segundo nodo no puede leer hasta que el primero publicó,
+y el protocolo lo impide por construcción, no por disciplina del programador.
+
+\subsection{El coordinador central}
+
+Para razonar sobre corrección, el coordinador central tiene una ventaja que
+cuesta sobrevalorar: \emph{existe un único orden}. Todas las decisiones se
+toman en un solo hilo, una por vez, sobre un estado que nadie más toca. Eso
+convierte afirmaciones que serían difíciles —``ningún lector observó la página
+mientras el escritor la tenía''— en propiedades de una máquina de estados que
+se pueden comprobar después de cada transición y que se pueden leer en una
+secuencia de filas numeradas.
+
+También hace que la verificación sea posible desde afuera. El registro del
+coordinador es la historia completa del sistema: no hay eventos que ocurrieran
+en otro lado y que haya que correlacionar por reloj.
+
+El costo está en el mismo lugar que la ventaja. El coordinador es un cuello de
+botella de dos maneras. Por trabajo, todas las solicitudes pasan por un hilo,
+aunque en este sistema ese hilo solo compara máscaras de bits y el límite real
+está en la red. Y por tráfico: cada página publicada viaja al coordinador y
+vuelve a salir hacia quien la pida, de modo que una transferencia entre dos
+nodos cuesta dos veces la página en vez de una. Un protocolo con directorio
+distribuido mandaría la página del dueño anterior al nuevo directamente.
+
+Como punto único de fallo es total y está asumido: si el coordinador muere, la
+sesión muere. No hay réplica del directorio ni de los datos confirmados, de
+modo que no hay ningún estado del que otro proceso pudiera continuar. Los
+trabajadores también son puntos únicos en un sentido más débil: la caída de
+uno aborta la sesión, porque las barreras esperan a todos y una página que él
+tuviera en escritura no tiene dueño que la publique.
+
+\subsection{Tráfico cuando datos independientes comparten página}
+
+El experimento de falso compartimiento responde esto con números. Con dos
+nodos que incrementan contadores que nadie más mira, ponerlos en la misma
+página sube el tráfico de coherencia de 433\,280 a 832\,640 bytes y las
+páginas transferidas de 102 a 198; las invalidaciones pasan de cero a 96. Con
+cuatro nodos, de cero a 198,6 invalidaciones y de 866\,560 a
+1\,692\,736 bytes.
+El trabajo de la aplicación es idéntico y los bytes de coordinación también:
+lo único que cambió es un desplazamiento dentro de la memoria.
+
+La razón es que el protocolo no sabe qué parte de la página le importa a
+quién. Cuando un nodo pide escribir, se invalida la página completa en todos
+los que tengan copia, aunque la zona que van a leer no se haya tocado. La
+unidad de coherencia es la página y la granularidad del dato es irrelevante
+para ella.
+
+Replicar lecturas conviene cuando la página se lee mucho más de lo que se
+escribe. Varios lectores coexisten sin costo entre ellos: cada uno paga la
+transferencia una vez y después lee a velocidad de memoria mientras conserve
+el permiso. El experimento de localidad lo muestra en la dirección contraria:
+el costo no está en leer sino en volver a pedir permiso.
+
+Deja de convenir en cuanto aparece una escritura, y el costo que agrega no es
+el de la escritura sino el de las copias. Escribir una página que nadie más
+tiene es un mensaje y una transferencia. Escribir una que tienen otros tres
+cuesta además tres invalidaciones, tres confirmaciones, y la próxima lectura
+de cada uno vuelve a traer los 4096 bytes. El costo de escribir crece con la
+cantidad de copias, no con el tamaño del dato que se escribió.
+
+\subsection{Los costos que la interfaz oculta}
+
+La interfaz de memoria compartida oculta que cada acceso puede ser una
+conversación. \code{DSM\_acquire} parece una operación local y puede costar
+una solicitud, una ronda de invalidaciones con sus confirmaciones, una espera
+en cola detrás de otros nodos y una transferencia de 4096 bytes. El puntero
+que devuelve se usa con instrucciones comunes, y esa es exactamente la
+apariencia que esconde el costo.
+
+También oculta el momento. El dato que se lee es el de la última publicación,
+que puede ser de hace un microsegundo o de hace un minuto; nada en la interfaz
+distingue esos dos casos. Y oculta la granularidad: el programador declara
+variables, el protocolo mueve páginas, y el falso compartimiento vive
+enteramente en la distancia entre esas dos unidades.
+
+Nuestro contrato mitiga esto no por ser más barato, sino por ser explícito. El
+costo sigue estando, pero aparece donde el programador escribió una llamada.
+Eso es lo que permite medirlo por intervalo y atribuirlo a una línea de
+código.
+
+Recuperar la transparencia por fallos de página —que la aplicación use
+punteros comunes sin pedir permiso— requeriría bastante más que interceptar la
+señal. Haría falta delimitar la región de memoria que es DSM y protegerla con
+\code{mprotect}, para que el acceso a una página sin permiso produzca un
+fallo. Habría que distinguir ese fallo de un \code{SIGSEGV} genuino de la
+aplicación y reenviar los ajenos al manejador que correspondiera, porque
+tragárselos convertiría un error del programa en un cuelgue. El manejador
+corre en contexto de señal, donde casi nada es seguro de llamar: no se puede
+abrir un socket, ni esperar una respuesta, ni tomar un cerrojo que el hilo
+interrumpido pudiera tener. La comunicación tendría que delegarse a un hilo
+aparte, con el manejador limitado a despertarlo y esperar, usando únicamente
+operaciones permitidas en ese contexto.
+
+Después quedaría el problema que el permiso de página no resuelve: con
+\code{mprotect} se detecta el primer acceso de escritura, pero no se sabe
+\emph{qué} se escribió sin comparar la página contra una copia previa, ni
+cuándo la región crítica terminó, porque ya nadie llama a \code{release}. Eso
+obliga a elegir un modelo de consistencia relajado y un punto de
+sincronización explícito de todas formas —una barrera, un cerrojo— con lo
+cual parte de la transparencia que se buscaba vuelve a la interfaz por otra
+puerta.

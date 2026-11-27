@@ -1,8 +1,50 @@
 \section{Relación con la DSM transparente}
 
-\pendiente{la DSM transparente: ilusión de memoria unificada, mapeo por fallos de página sobre la MMU, y que oculta la red pero no su costo}
+La memoria compartida distribuida transparente, tal como se presentó en el
+curso, persigue una ilusión: que el programador use instrucciones comunes
+—\code{load}, \code{store}, punteros— sobre una red de computadoras como si
+fuera una sola máquina. El mecanismo que la sostiene es el fallo de página.
+La unidad de ejecución reutiliza la MMU del procesador: cuando un dato no está
+presente en la memoria local, o está pero sin los permisos necesarios, el
+fallo activa al soporte de ejecución de la DSM, que pide la página o el
+permiso al nodo que lo tenga. La red queda oculta; su costo, no.
 
-\pendiente{en qué se diferencia nuestro contrato acquire/release: el costo es visible porque el programador lo pide}
+Nuestro sistema comparte el modelo de coherencia y renuncia a la ilusión. La
+página sigue siendo la unidad, la invalidación sigue siendo el mecanismo, y un
+escritor sigue excluyendo a los lectores. Lo que cambia es quién pide: acá lo
+pide el programa, con \code{DSM\_acquire} y \code{DSM\_release}, y no la MMU.
 
-\pendiente{qué NO se afirma: no es consistencia secuencial general ni TreadMarks}
+Esa diferencia tiene tres consecuencias que vale la pena separar.
 
+\emph{El costo es visible.} En la versión transparente, una línea que
+desreferencia un puntero puede desencadenar una transferencia de 4096 bytes y
+una ronda de invalidaciones, y nada en el código lo anuncia. Acá esa misma
+transferencia ocurre en una llamada que el programador escribió, y por eso se
+puede atribuir a una línea, medir por intervalo y contar en el registro. Los
+experimentos de este trabajo son posibles por esa razón: el costo tiene dónde
+anotarse.
+
+\emph{La región crítica está delimitada.} El par adquirir/liberar dice dónde
+empieza y dónde termina el acceso. La versión transparente no tiene ese dato
+—nadie llama a nada al terminar— y por eso necesita inferirlo o pedirlo por
+otra vía, con un modelo de consistencia relajado atado a puntos de
+sincronización explícitos.
+
+\emph{La carga de la corrección se mueve.} Acá el programador tiene que pedir
+el modo correcto. Un incremento hecho con un \code{acquire} de lectura seguido
+de otro de escritura pierde actualizaciones, y el protocolo no lo impide: lo
+impide el programador al pedir \code{WRITE} desde el principio. La
+transparencia le quita esa responsabilidad y, a cambio, le quita también la
+información para tomarla.
+
+Conviene decir con precisión qué \emph{no} se afirma. Lo que este sistema
+garantiza es exclusión por página dentro del intervalo adquirido, con las
+publicaciones visibles para quien adquiera después. No es consistencia
+secuencial general: no hay un orden total de todas las operaciones de memoria
+del sistema con el que todos los nodos estén de acuerdo, y no hay ninguna
+garantía sobre operaciones que abarquen más de una página. Tampoco es una
+implementación de consistencia por liberación al estilo de TreadMarks: no hay
+escritores múltiples concurrentes sobre la misma página, ni \emph{diffs}, ni
+marcas temporales vectoriales. El modelo de acá es un escritor o varios
+lectores, arbitrado por un directorio central, que es el caso más simple de la
+familia y no un punto intermedio de ella.
