@@ -1,0 +1,9 @@
+calentamiento de distribucion/n2_t100003: descartado antes de medir
+códigos: {"coordinador": 0, "nodos": [0, 0]}
+duración: 0.004 s
+
+-- nodo 0
+nodo 0: términos [0, 50002) suma_parcial=0.78539316359743727
+pi: nodos=2 terminos=100003 pi_distribuido=3.1416026532897878 pi_secuencial=3.1416026532897283 dif_orden=5.951e-14 err_truncamiento=1.000e-05 barreras=0 t_total_ms=1.521 t_calculo_ms=0.487 t_secuencial_ms=0.223
+-- nodo 1
+nodo 1: términos [50002, 100003) suma_parcial=7.499725009687169e-06

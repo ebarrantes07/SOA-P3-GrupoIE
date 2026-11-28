@@ -1,0 +1,8 @@
+calentamiento de false_sharing/n2_separate_r50: descartado antes de medir
+códigos: {"coordinador": 0, "nodos": [0, 0]}
+duración: 0.014 s
+
+-- nodo 0
+granularidad: nodo=0 diseno=separate rondas=50 adquisiciones_trabajo=50 incrementos=50 barreras_coordinacion=51 adquisiciones_verificacion=1 t_trabajo_ms=12.397
+-- nodo 1
+granularidad: nodo=1 diseno=separate rondas=50 adquisiciones_trabajo=50 incrementos=50 barreras_coordinacion=51 adquisiciones_verificacion=1 t_trabajo_ms=12.414

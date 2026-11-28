@@ -75,6 +75,34 @@ cuatro, para un trabajo que la aplicación considera independiente. Las
 invalidaciones pasan de cero a 96 y a 198,6 en promedio, los bytes de
 coherencia casi se duplican y las páginas transferidas también.
 
+El mecanismo detrás de ese «casi se duplican» es una sola diferencia, y se
+cuenta en viajes de página. Con una página por nodo, la copia de cada uno
+sigue vigente porque nadie más la toca: el permiso llega sin datos y la página
+viaja una vez por escritura, al publicar. Con la página compartida, otro nodo
+publicó en el medio, de modo que el permiso tiene que traerla y la página
+viaja dos veces. De ahí que las páginas transferidas sean 102 contra 198 con
+dos nodos, y 204 contra 402,6 con cuatro, sobre 100 y 200 escrituras.
+
+Eso permite ponerle precio a una invalidación: los 32 bytes del aviso, los 32
+de la confirmación y los 4096 de la página que la siguiente adquisición vuelve
+a necesitar. Son 4160 bytes, y la diferencia completa entre los dos diseños es
+ese número multiplicado por la cantidad de invalidaciones:
+
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & $96 \times 4160$ & $198{,}6 \times 4160$ \\
+\midrule
+predicho & 399\,360 & 826\,176 \\
+medido   & 399\,360 & 826\,176 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Sin resto en ninguno de los dos casos. El aviso y su confirmación son el 1,5\%
+de ese costo: lo caro del falso compartimiento no es coordinar, es reenviar
+datos que no hacía falta mover.
+
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.86\textwidth]{figuras/fig2_false_sharing.pdf}
@@ -89,12 +117,24 @@ así que no explican ninguna parte de la diferencia. Lo que cambia es
 exclusivamente el tráfico de coherencia, y cambia porque la unidad de
 coherencia es la página y no el dato.
 
+Una advertencia de lectura: el salto de dos a cuatro nodos no mide
+escalabilidad. Cada nodo hace sus 50 incrementos, así que con cuatro hay el
+doble de escrituras que con dos y el tráfico se duplica por eso y no por el
+protocolo. La comparación que el experimento sostiene es entre diseños a igual
+$N$.
+
 \subsection{Costo de distribución}
 
 La serie de Leibniz para $\pi$ con el mismo $T$ repartido entre $N$ nodos. Se
 informan por separado el tiempo de la fase de cálculo y publicación, el total
 de la sesión, y el de la serie secuencial de referencia que el nodo 0 calcula
 para verificarse.
+
+El tráfico no depende de $T$: la secuencia de mensajes es la misma se sumen
+cien mil términos o doscientos millones. Con un nodo son 8776 bytes exactos
+con los dos valores; con varios, las diferencias de la tabla son el
+entrelazado de las publicaciones y no un efecto de $T$. Por eso la diferencia
+de comportamiento entre los dos regímenes no puede venir de la red.
 
 \begin{table*}[t]
 \caption{Costo de distribución. La escala compara la fase de cálculo contra
@@ -109,6 +149,13 @@ Con $T$ grande la fase de cálculo escala 1,72 veces con dos nodos y 2,91 con
 cuatro. El total baja mucho menos —de 712 a 568~ms— porque arrastra el
 establecimiento de la sesión, las barreras y la serie de referencia, que no se
 reparten entre nadie.
+
+La resta dice cuánto de ese total es el sistema. Con cuatro nodos, a los
+567,7~ms hay que quitarles los 124,0 de la fase de cálculo y los 441,8 de la
+serie de referencia: quedan \textbf{1,9~ms} para establecer la sesión, ocho o
+nueve viajes de página y dos barreras. El 0,3\% del total. Lo que no baja al
+agregar nodos no es el protocolo sino la verificación secuencial, que a
+propósito no se reparte.
 
 Con $T$ pequeño distribuir \emph{empeora} todo: el total sube de 1,32 a
 2,56~ms al pasar de uno a cuatro nodos, y los bytes se multiplican por 4,4

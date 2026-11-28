@@ -1,0 +1,7 @@
+calentamiento de distribucion/n1_t200000003: descartado antes de medir
+códigos: {"coordinador": 0, "nodos": [0]}
+duración: 0.808 s
+
+-- nodo 0
+nodo 0: términos [0, 200000003) suma_parcial=0.7853981646473519
+pi: nodos=1 terminos=200000003 pi_distribuido=3.1415926585894076 pi_secuencial=3.1415926585894076 dif_orden=0.000e+00 err_truncamiento=5.000e-09 barreras=0 t_total_ms=806.566 t_calculo_ms=407.274 t_secuencial_ms=398.570
