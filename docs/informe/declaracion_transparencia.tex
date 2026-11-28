@@ -1,4 +1,17 @@
-\section{Declaración de transparencia}
+\section*{Declaración de transparencia, uso de IA y material reutilizado}
 
-\pendiente{uso de herramientas de IA y material reutilizado del Proyecto 2, con su procedencia y licencia}
+Los dos integrantes usaron Claude Code (Anthropic) como herramienta de apoyo
+en la implementación, las pruebas, la revisión de los pull requests y la
+redacción de este informe. Todo el contenido técnico se verificó contra el
+código fuente y contra las corridas reales antes de incluirse: las cifras
+salen del registro del coordinador y las tablas las genera
+\code{scripts/tablas\_informe.py}, sin transcribir.
 
+Del Proyecto~2 de los mismos integrantes (\code{SOA-P2-GrupoIE}), trabajo
+propio sin restricciones externas, se reutilizan el reloj monotónico
+(\code{src/clock.c}), los conversores estrictos de argumentos
+(\code{src/cli.c}) y la base del generador de figuras SVG
+(\code{scripts/graficas.py}). Cada archivo declara su procedencia, y la
+decisión está registrada en la bitácora de diseño (D0.5). La plantilla
+\code{IEEEtran} se usa bajo su propia licencia. Todo lo demás es original de
+este proyecto.

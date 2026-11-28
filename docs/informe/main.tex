@@ -75,8 +75,20 @@ Contrato Expl\'icito, Coherencia por P\'agina y Evaluaci\'on Experimental}
 \maketitle
 
 \begin{abstract}
-\pendiente{resumen: qué se construyó, con qué garantía, cómo se verificó y
-el resultado más fuerte de los experimentos, en unas 150 palabras}
+Se implementa una memoria compartida distribuida en espacio de usuario: un
+coordinador central y hasta cuatro procesos trabajadores comparten páginas de
+4096 bytes por TCP, con un contrato explícito de adquirir y liberar en lugar de
+fallos de página. El coordinador mantiene un directorio por página y aplica un
+protocolo de un escritor o varios lectores con invalidación, de modo que nadie
+lee datos obsoletos dentro de un intervalo adquirido. La corrección se
+verifica con 192 casos automatizados, bajo AddressSanitizer,
+UndefinedBehaviorSanitizer y ThreadSanitizer, y con un verificador que
+reconstruye el estado desde el registro del coordinador. Los experimentos
+muestran que volver a adquirir una página cuesta mensajes y no datos (de 22 a
+274 mensajes con las mismas tres páginas transferidas), que poner contadores
+independientes en una misma página multiplica el tiempo por 2,4 con cuatro
+nodos sin cambiar el trabajo, y que repartir el cálculo de $\pi$ solo
+compensa cuando el cómputo domina sobre el costo de coordinar.
 \end{abstract}
 
 \begin{IEEEkeywords}

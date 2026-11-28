@@ -1,4 +1,29 @@
 \section{Conclusiones}
 
-\pendiente{qué quedó demostrado y qué seguiría}
+\begin{itemize}
+\item \textbf{El protocolo cumple la garantía que promete, y nada más.} Un
+      escritor o varios lectores por página, sin datos obsoletos dentro de un
+      intervalo adquirido. Lo sostienen 192 casos bajo sanitizadores y un
+      verificador que reconstruye el estado desde el registro en vez de
+      confiar en lo que el coordinador dice de sí mismo.
 
+\item \textbf{El costo de la DSM está en los permisos y en la granularidad,
+      no en los datos.} Volver a adquirir una página vigente multiplica los
+      mensajes sin transferir la página otra vez. Compartir una página entre
+      datos independientes duplica el tráfico de coherencia con el mismo
+      trabajo y los mismos bytes de coordinación.
+
+\item \textbf{Distribuir conviene solo cuando el cómputo domina.} Con
+      $2\times10^{8}$ términos, la fase de cálculo escala 2,91 veces con cuatro
+      nodos; con $10^{5}$, repartir empeora el tiempo, porque solo se mide el
+      costo de arrancar la sesión.
+
+\item \textbf{El contrato explícito hizo posible medir.} Cada costo aparece en
+      una llamada que el programador escribió, y por eso se pudo atribuir a un
+      intervalo y contar en el registro.
+\end{itemize}
+
+Lo siguiente sería un directorio distribuido que envíe la página del dueño
+anterior al nuevo sin pasar por el coordinador, comparar otro tamaño de
+página, y recuperar la transparencia con \code{mprotect} sobre este mismo
+protocolo.
