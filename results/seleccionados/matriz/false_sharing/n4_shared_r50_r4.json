@@ -1,0 +1,98 @@
+{
+ "experimento": "false_sharing",
+ "config": {
+  "nodes": 4,
+  "layout": "shared",
+  "rounds": 50
+ },
+ "repeticion": 4,
+ "salida": {
+  "nodo": "0",
+  "diseno": "shared",
+  "rondas": "50",
+  "adquisiciones_trabajo": "50",
+  "incrementos": "50",
+  "barreras_coordinacion": "51",
+  "adquisiciones_verificacion": "1",
+  "t_trabajo_ms": "42.301"
+ },
+ "salida_nodo": 0,
+ "salida_por_nodo": [
+  {
+   "nodo": "0",
+   "diseno": "shared",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "42.301"
+  },
+  {
+   "nodo": "1",
+   "diseno": "shared",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "42.277"
+  },
+  {
+   "nodo": "2",
+   "diseno": "shared",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "42.320"
+  },
+  {
+   "nodo": "3",
+   "diseno": "shared",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "42.295"
+  }
+ ],
+ "codigos_salida": {
+  "coordinador": 0,
+  "nodos": [
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "log": "n4_shared_r50_r4.csv",
+ "entorno": {
+  "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+  "nproc": 16,
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc": "glibc 2.39",
+  "python": "3.12.3"
+ },
+ "comando": [
+  "/home/ebarrantes/SOA-P3-GrupoIE/app_granularity",
+  "--port",
+  "42093",
+  "--nodes",
+  "4",
+  "--timeout-ms",
+  "30000",
+  "--layout",
+  "shared",
+  "--rounds",
+  "50",
+  "--id",
+  "<i>"
+ ],
+ "inicio_utc": "2026-11-27T00:23:42Z",
+ "duracion_s": 0.0455,
+ "calentamiento_descartado": "calentamiento/n4_shared_r50.txt"
+}

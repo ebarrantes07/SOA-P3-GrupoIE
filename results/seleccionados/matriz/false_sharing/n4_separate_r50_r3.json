@@ -1,0 +1,98 @@
+{
+ "experimento": "false_sharing",
+ "config": {
+  "nodes": 4,
+  "layout": "separate",
+  "rounds": 50
+ },
+ "repeticion": 3,
+ "salida": {
+  "nodo": "0",
+  "diseno": "separate",
+  "rondas": "50",
+  "adquisiciones_trabajo": "50",
+  "incrementos": "50",
+  "barreras_coordinacion": "51",
+  "adquisiciones_verificacion": "1",
+  "t_trabajo_ms": "17.495"
+ },
+ "salida_nodo": 0,
+ "salida_por_nodo": [
+  {
+   "nodo": "0",
+   "diseno": "separate",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "17.495"
+  },
+  {
+   "nodo": "1",
+   "diseno": "separate",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "17.497"
+  },
+  {
+   "nodo": "2",
+   "diseno": "separate",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "17.498"
+  },
+  {
+   "nodo": "3",
+   "diseno": "separate",
+   "rondas": "50",
+   "adquisiciones_trabajo": "50",
+   "incrementos": "50",
+   "barreras_coordinacion": "51",
+   "adquisiciones_verificacion": "1",
+   "t_trabajo_ms": "17.501"
+  }
+ ],
+ "codigos_salida": {
+  "coordinador": 0,
+  "nodos": [
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "log": "n4_separate_r50_r3.csv",
+ "entorno": {
+  "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+  "nproc": 16,
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc": "glibc 2.39",
+  "python": "3.12.3"
+ },
+ "comando": [
+  "/home/ebarrantes/SOA-P3-GrupoIE/app_granularity",
+  "--port",
+  "41671",
+  "--nodes",
+  "4",
+  "--timeout-ms",
+  "30000",
+  "--layout",
+  "separate",
+  "--rounds",
+  "50",
+  "--id",
+  "<i>"
+ ],
+ "inicio_utc": "2026-11-27T00:23:43Z",
+ "duracion_s": 0.0208,
+ "calentamiento_descartado": "calentamiento/n4_separate_r50.txt"
+}
