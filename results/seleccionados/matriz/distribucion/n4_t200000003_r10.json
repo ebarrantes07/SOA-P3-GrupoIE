@@ -1,0 +1,82 @@
+{
+ "experimento": "distribucion",
+ "config": {
+  "nodes": 4,
+  "terms": 200000003
+ },
+ "repeticion": 10,
+ "salida": {
+  "suma_parcial": "0.7853981683975626",
+  "nodos": "4",
+  "terminos": "200000003",
+  "pi_distribuido": "3.1415926585902505",
+  "pi_secuencial": "3.1415926585894076",
+  "dif_orden": "8.429e-13",
+  "err_truncamiento": "5.000e-09",
+  "barreras": "0",
+  "t_total_ms": "574.181",
+  "t_calculo_ms": "129.928",
+  "t_secuencial_ms": "442.613"
+ },
+ "salida_nodo": 0,
+ "salida_por_nodo": [
+  {
+   "suma_parcial": "0.7853981683975626",
+   "nodos": "4",
+   "terminos": "200000003",
+   "pi_distribuido": "3.1415926585902505",
+   "pi_secuencial": "3.1415926585894076",
+   "dif_orden": "8.429e-13",
+   "err_truncamiento": "5.000e-09",
+   "barreras": "0",
+   "t_total_ms": "574.181",
+   "t_calculo_ms": "129.928",
+   "t_secuencial_ms": "442.613"
+  },
+  {
+   "suma_parcial": "-7.4999998506346098e-09"
+  },
+  {
+   "suma_parcial": "4.1666665833439092e-09"
+  },
+  {
+   "suma_parcial": "-4.1666665208330994e-10"
+  }
+ ],
+ "codigos_salida": {
+  "coordinador": 0,
+  "nodos": [
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "log": "n4_t200000003_r10.csv",
+ "entorno": {
+  "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+  "nproc": 16,
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc": "glibc 2.39",
+  "python": "3.12.3"
+ },
+ "comando": [
+  "/home/ebarrantes/SOA-P3-GrupoIE/app_pi",
+  "--port",
+  "46717",
+  "--nodes",
+  "4",
+  "--timeout-ms",
+  "30000",
+  "--terms",
+  "200000003",
+  "--barriers",
+  "0",
+  "--id",
+  "<i>"
+ ],
+ "inicio_utc": "2026-11-27T00:24:06Z",
+ "duracion_s": 0.5772,
+ "calentamiento_descartado": "calentamiento/n4_t200000003.txt"
+}

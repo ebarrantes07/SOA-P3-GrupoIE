@@ -1,0 +1,4090 @@
+[
+  {
+    "experimento": "distribucion",
+    "config": "nodes=1 terms=100003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7854006633224321,
+        "sd": 0.0,
+        "min": 0.7854006633224321,
+        "max": 0.7854006633224321
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 0.46900000000000003,
+        "sd": 0.06464432603785802,
+        "min": 0.401,
+        "max": 0.611
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.21549999999999997,
+        "sd": 0.02909849175167369,
+        "min": 0.194,
+        "max": 0.282
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 1.3235,
+        "sd": 0.1987244043616407,
+        "min": 1.08,
+        "max": 1.687
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00258,
+        "sd": 0.0003084008934992101,
+        "min": 0.0022,
+        "max": 0.0032
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7854006633224321,
+        "sd": 0.0,
+        "min": 0.7854006633224321,
+        "max": 0.7854006633224321
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 0.46900000000000003,
+        "sd": 0.06464432603785802,
+        "min": 0.401,
+        "max": 0.611
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.21549999999999997,
+        "sd": 0.02909849175167369,
+        "min": 0.194,
+        "max": 0.282
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 1.3235,
+        "sd": 0.1987244043616407,
+        "min": 1.08,
+        "max": 1.687
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 8488.0,
+        "sd": 0.0,
+        "min": 8488.0,
+        "max": 8488.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 160.0,
+        "sd": 0.0,
+        "min": 160.0,
+        "max": 160.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4392.0,
+        "sd": 0.0,
+        "min": 4392.0,
+        "max": 4392.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 4384.0,
+        "sd": 0.0,
+        "min": 4384.0,
+        "max": 4384.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 128.0,
+        "sd": 0.0,
+        "min": 128.0,
+        "max": 128.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 8776.0,
+        "sd": 0.0,
+        "min": 8776.0,
+        "max": 8776.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 16.0,
+        "sd": 0.0,
+        "min": 16.0,
+        "max": 16.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 7.0,
+        "sd": 0.0,
+        "min": 7.0,
+        "max": 7.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 15.0,
+        "sd": 0.0,
+        "min": 15.0,
+        "max": 15.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      }
+    }
+  },
+  {
+    "experimento": "distribucion",
+    "config": "nodes=1 terms=200000003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981646473519,
+        "sd": 0.0,
+        "min": 0.7853981646473519,
+        "max": 0.7853981646473519
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 360.3435,
+        "sd": 17.799163852083993,
+        "min": 343.989,
+        "max": 404.753
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 350.4818,
+        "sd": 17.73876547000947,
+        "min": 336.028,
+        "max": 396.836
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 712.0103,
+        "sd": 33.34536863410634,
+        "min": 689.83,
+        "max": 803.588
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.7136899999999999,
+        "sd": 0.033288451450916134,
+        "min": 0.6912,
+        "max": 0.8051
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981646473519,
+        "sd": 0.0,
+        "min": 0.7853981646473519,
+        "max": 0.7853981646473519
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 360.3435,
+        "sd": 17.799163852083993,
+        "min": 343.989,
+        "max": 404.753
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 350.4818,
+        "sd": 17.73876547000947,
+        "min": 336.028,
+        "max": 396.836
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 712.0103,
+        "sd": 33.34536863410634,
+        "min": 689.83,
+        "max": 803.588
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 8488.0,
+        "sd": 0.0,
+        "min": 8488.0,
+        "max": 8488.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 160.0,
+        "sd": 0.0,
+        "min": 160.0,
+        "max": 160.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4392.0,
+        "sd": 0.0,
+        "min": 4392.0,
+        "max": 4392.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 4384.0,
+        "sd": 0.0,
+        "min": 4384.0,
+        "max": 4384.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 128.0,
+        "sd": 0.0,
+        "min": 128.0,
+        "max": 128.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 8776.0,
+        "sd": 0.0,
+        "min": 8776.0,
+        "max": 8776.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 16.0,
+        "sd": 0.0,
+        "min": 16.0,
+        "max": 16.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 7.0,
+        "sd": 0.0,
+        "min": 7.0,
+        "max": 7.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 15.0,
+        "sd": 0.0,
+        "min": 15.0,
+        "max": 15.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      }
+    }
+  },
+  {
+    "experimento": "distribucion",
+    "config": "nodes=2 terms=100003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 5.951e-14,
+        "sd": 0.0,
+        "min": 5.951e-14,
+        "max": 5.951e-14
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.141602653289788,
+        "sd": 0.0,
+        "min": 3.141602653289788,
+        "max": 3.141602653289788
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7853931635974373,
+        "sd": 0.0,
+        "min": 0.7853931635974373,
+        "max": 0.7853931635974373
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 0.6119,
+        "sd": 0.2272431150405515,
+        "min": 0.478,
+        "max": 1.19
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.2156,
+        "sd": 0.049643618813387164,
+        "min": 0.194,
+        "max": 0.352
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 1.7055,
+        "sd": 0.4489303954957828,
+        "min": 1.385,
+        "max": 2.546
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.0032,
+        "sd": 0.0006896053621859067,
+        "min": 0.0025,
+        "max": 0.0047
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 5.951e-14,
+        "sd": 0.0,
+        "min": 5.951e-14,
+        "max": 5.951e-14
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.141602653289788,
+        "sd": 0.0,
+        "min": 3.141602653289788,
+        "max": 3.141602653289788
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7853931635974373,
+        "sd": 0.0,
+        "min": 0.7853931635974373,
+        "max": 0.7853931635974373
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 0.6119,
+        "sd": 0.2272431150405515,
+        "min": 0.478,
+        "max": 1.19
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.2156,
+        "sd": 0.049643618813387164,
+        "min": 0.194,
+        "max": 0.352
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 1.7055,
+        "sd": 0.4489303954957828,
+        "min": 1.385,
+        "max": 2.546
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 20992.0,
+        "sd": 0.0,
+        "min": 20992.0,
+        "max": 20992.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 8744.0,
+        "sd": 0.0,
+        "min": 8744.0,
+        "max": 8744.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 12824.0,
+        "sd": 0.0,
+        "min": 12824.0,
+        "max": 12824.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 21568.0,
+        "sd": 0.0,
+        "min": 21568.0,
+        "max": 21568.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 26.0,
+        "sd": 0.0,
+        "min": 26.0,
+        "max": 26.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 15.0,
+        "sd": 0.0,
+        "min": 15.0,
+        "max": 15.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 13.0,
+        "sd": 0.0,
+        "min": 13.0,
+        "max": 13.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 28.0,
+        "sd": 0.0,
+        "min": 28.0,
+        "max": 28.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 5.0,
+        "sd": 0.0,
+        "min": 5.0,
+        "max": 5.0
+      }
+    }
+  },
+  {
+    "experimento": "distribucion",
+    "config": "nodes=2 terms=200000003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 8.171e-14,
+        "sd": 0.0,
+        "min": 8.171e-14,
+        "max": 8.171e-14
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.141592658589326,
+        "sd": 0.0,
+        "min": 3.141592658589326,
+        "max": 3.141592658589326
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981608973315,
+        "sd": 0.0,
+        "min": 0.7853981608973315,
+        "max": 0.7853981608973315
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 209.56060000000002,
+        "sd": 19.396293398482094,
+        "min": 183.824,
+        "max": 241.244
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 396.8837,
+        "sd": 37.34383935820086,
+        "min": 340.921,
+        "max": 441.581
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 607.8198,
+        "sd": 52.83637354827951,
+        "min": 531.969,
+        "max": 659.078
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.60956,
+        "sd": 0.05276870284553145,
+        "min": 0.5339,
+        "max": 0.6606
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 8.171e-14,
+        "sd": 0.0,
+        "min": 8.171e-14,
+        "max": 8.171e-14
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.141592658589326,
+        "sd": 0.0,
+        "min": 3.141592658589326,
+        "max": 3.141592658589326
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981608973315,
+        "sd": 0.0,
+        "min": 0.7853981608973315,
+        "max": 0.7853981608973315
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 209.56060000000002,
+        "sd": 19.396293398482094,
+        "min": 183.824,
+        "max": 241.244
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 396.8837,
+        "sd": 37.34383935820086,
+        "min": 340.921,
+        "max": 441.581
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 607.8198,
+        "sd": 52.83637354827951,
+        "min": 531.969,
+        "max": 659.078
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 18944.0,
+        "sd": 2158.7815493416138,
+        "min": 16896.0,
+        "max": 20992.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 8744.0,
+        "sd": 0.0,
+        "min": 8744.0,
+        "max": 8744.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 10776.0,
+        "sd": 2158.7815493416138,
+        "min": 8728.0,
+        "max": 12824.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 19520.0,
+        "sd": 2158.7815493416138,
+        "min": 17472.0,
+        "max": 21568.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 26.0,
+        "sd": 0.0,
+        "min": 26.0,
+        "max": 26.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.5,
+        "sd": 0.5270462766947299,
+        "min": 2.0,
+        "max": 3.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.5,
+        "sd": 0.5270462766947299,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 15.0,
+        "sd": 0.0,
+        "min": 15.0,
+        "max": 15.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 13.0,
+        "sd": 0.0,
+        "min": 13.0,
+        "max": 13.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 28.0,
+        "sd": 0.0,
+        "min": 28.0,
+        "max": 28.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 4.5,
+        "sd": 0.5270462766947299,
+        "min": 4.0,
+        "max": 5.0
+      }
+    }
+  },
+  {
+    "experimento": "distribucion",
+    "config": "nodes=4 terms=100003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 6.75e-14,
+        "sd": 0.0,
+        "min": 6.75e-14,
+        "max": 6.75e-14
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.141602653289796,
+        "sd": 0.0,
+        "min": 3.141602653289796,
+        "max": 3.141602653289796
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7854081629974587,
+        "sd": 0.0,
+        "min": 0.7854081629974587,
+        "max": 0.7854081629974587
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 0.8888999999999999,
+        "sd": 0.13534027075814825,
+        "min": 0.745,
+        "max": 1.17
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.196,
+        "sd": 0.004944132324730437,
+        "min": 0.194,
+        "max": 0.21
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 2.5556,
+        "sd": 0.47860774939168915,
+        "min": 2.049,
+        "max": 3.623
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00443,
+        "sd": 0.0005963779562212765,
+        "min": 0.0037,
+        "max": 0.0054
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 6.75e-14,
+        "sd": 0.0,
+        "min": 6.75e-14,
+        "max": 6.75e-14
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 1e-05,
+        "sd": 0.0,
+        "min": 1e-05,
+        "max": 1e-05
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.141602653289796,
+        "sd": 0.0,
+        "min": 3.141602653289796,
+        "max": 3.141602653289796
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1416026532897283,
+        "sd": 0.0,
+        "min": 3.1416026532897283,
+        "max": 3.1416026532897283
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7854081629974587,
+        "sd": 0.0,
+        "min": 0.7854081629974587,
+        "max": 0.7854081629974587
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 0.8888999999999999,
+        "sd": 0.13534027075814825,
+        "min": 0.745,
+        "max": 1.17
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 0.196,
+        "sd": 0.004944132324730437,
+        "min": 0.194,
+        "max": 0.21
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 2.5556,
+        "sd": 0.47860774939168915,
+        "min": 2.049,
+        "max": 3.623
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 100003.0,
+        "sd": 0.0,
+        "min": 100003.0,
+        "max": 100003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 37808.0,
+        "sd": 0.0,
+        "min": 37808.0,
+        "max": 37808.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 640.0,
+        "sd": 0.0,
+        "min": 640.0,
+        "max": 640.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 17448.0,
+        "sd": 0.0,
+        "min": 17448.0,
+        "max": 17448.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 21512.0,
+        "sd": 0.0,
+        "min": 21512.0,
+        "max": 21512.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 512.0,
+        "sd": 0.0,
+        "min": 512.0,
+        "max": 512.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 38960.0,
+        "sd": 0.0,
+        "min": 38960.0,
+        "max": 38960.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 46.0,
+        "sd": 0.0,
+        "min": 46.0,
+        "max": 46.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 5.0,
+        "sd": 0.0,
+        "min": 5.0,
+        "max": 5.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 29.0,
+        "sd": 0.0,
+        "min": 29.0,
+        "max": 29.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 25.0,
+        "sd": 0.0,
+        "min": 25.0,
+        "max": 25.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 54.0,
+        "sd": 0.0,
+        "min": 54.0,
+        "max": 54.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 9.0,
+        "sd": 0.0,
+        "min": 9.0,
+        "max": 9.0
+      }
+    }
+  },
+  {
+    "experimento": "distribucion",
+    "config": "nodes=4 terms=200000003",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.dif_orden": {
+        "n": 10,
+        "media": 8.429e-13,
+        "sd": 0.0,
+        "min": 8.429e-13,
+        "max": 8.429e-13
+      },
+      "app.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "app.nodos": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "app.pi_distribuido": {
+        "n": 10,
+        "media": 3.1415926585902505,
+        "sd": 0.0,
+        "min": 3.1415926585902505,
+        "max": 3.1415926585902505
+      },
+      "app.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "app.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981683975626,
+        "sd": 0.0,
+        "min": 0.7853981683975626,
+        "max": 0.7853981683975626
+      },
+      "app.t_calculo_ms": {
+        "n": 10,
+        "media": 124.01700000000001,
+        "sd": 8.428559347045418,
+        "min": 115.898,
+        "max": 144.566
+      },
+      "app.t_secuencial_ms": {
+        "n": 10,
+        "media": 441.79089999999997,
+        "sd": 15.016440179202108,
+        "min": 425.265,
+        "max": 480.294
+      },
+      "app.t_total_ms": {
+        "n": 10,
+        "media": 567.7148,
+        "sd": 17.30382238312295,
+        "min": 543.14,
+        "max": 602.022
+      },
+      "app.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.56958,
+        "sd": 0.017593736259122337,
+        "min": 0.5445,
+        "max": 0.6035
+      },
+      "nodo_max.barreras": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "nodo_max.dif_orden": {
+        "n": 10,
+        "media": 8.429e-13,
+        "sd": 0.0,
+        "min": 8.429e-13,
+        "max": 8.429e-13
+      },
+      "nodo_max.err_truncamiento": {
+        "n": 10,
+        "media": 5e-09,
+        "sd": 0.0,
+        "min": 5e-09,
+        "max": 5e-09
+      },
+      "nodo_max.nodos": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "nodo_max.pi_distribuido": {
+        "n": 10,
+        "media": 3.1415926585902505,
+        "sd": 0.0,
+        "min": 3.1415926585902505,
+        "max": 3.1415926585902505
+      },
+      "nodo_max.pi_secuencial": {
+        "n": 10,
+        "media": 3.1415926585894076,
+        "sd": 0.0,
+        "min": 3.1415926585894076,
+        "max": 3.1415926585894076
+      },
+      "nodo_max.suma_parcial": {
+        "n": 10,
+        "media": 0.7853981683975626,
+        "sd": 0.0,
+        "min": 0.7853981683975626,
+        "max": 0.7853981683975626
+      },
+      "nodo_max.t_calculo_ms": {
+        "n": 10,
+        "media": 124.01700000000001,
+        "sd": 8.428559347045418,
+        "min": 115.898,
+        "max": 144.566
+      },
+      "nodo_max.t_secuencial_ms": {
+        "n": 10,
+        "media": 441.79089999999997,
+        "sd": 15.016440179202108,
+        "min": 425.265,
+        "max": 480.294
+      },
+      "nodo_max.t_total_ms": {
+        "n": 10,
+        "media": 567.7148,
+        "sd": 17.30382238312295,
+        "min": 543.14,
+        "max": 602.022
+      },
+      "nodo_max.terminos": {
+        "n": 10,
+        "media": 200000003.0,
+        "sd": 0.0,
+        "min": 200000003.0,
+        "max": 200000003.0
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 36579.2,
+        "sd": 1978.555971746398,
+        "min": 33712.0,
+        "max": 37808.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 640.0,
+        "sd": 0.0,
+        "min": 640.0,
+        "max": 640.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 17448.0,
+        "sd": 0.0,
+        "min": 17448.0,
+        "max": 17448.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 20283.2,
+        "sd": 1978.555971746398,
+        "min": 17416.0,
+        "max": 21512.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 512.0,
+        "sd": 0.0,
+        "min": 512.0,
+        "max": 512.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 37731.2,
+        "sd": 1978.555971746398,
+        "min": 34864.0,
+        "max": 38960.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 46.0,
+        "sd": 0.0,
+        "min": 46.0,
+        "max": 46.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 4.7,
+        "sd": 0.48304589153964794,
+        "min": 4.0,
+        "max": 5.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.3,
+        "sd": 0.4830458915396479,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 29.0,
+        "sd": 0.0,
+        "min": 29.0,
+        "max": 29.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 25.0,
+        "sd": 0.0,
+        "min": 25.0,
+        "max": 25.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 54.0,
+        "sd": 0.0,
+        "min": 54.0,
+        "max": 54.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 8.7,
+        "sd": 0.48304589153964794,
+        "min": 8.0,
+        "max": 9.0
+      }
+    }
+  },
+  {
+    "experimento": "false_sharing",
+    "config": "layout=separate nodes=2 rounds=50",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "app.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.t_trabajo_ms": {
+        "n": 10,
+        "media": 14.0427,
+        "sd": 1.0875109245939147,
+        "min": 12.407,
+        "max": 15.994
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.01639,
+        "sd": 0.0011406138698087098,
+        "min": 0.015,
+        "max": 0.0183
+      },
+      "nodo_max.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "nodo_max.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.t_trabajo_ms": {
+        "n": 10,
+        "media": 14.047,
+        "sd": 1.0877963453187776,
+        "min": 12.407,
+        "max": 15.997
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 100.0,
+        "sd": 0.0,
+        "min": 100.0,
+        "max": 100.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 433280.0,
+        "sd": 0.0,
+        "min": 433280.0,
+        "max": 433280.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 8160.0,
+        "sd": 0.0,
+        "min": 8160.0,
+        "max": 8160.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 421168.0,
+        "sd": 0.0,
+        "min": 421168.0,
+        "max": 421168.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 20528.0,
+        "sd": 0.0,
+        "min": 20528.0,
+        "max": 20528.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 441696.0,
+        "sd": 0.0,
+        "min": 441696.0,
+        "max": 441696.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 567.0,
+        "sd": 0.0,
+        "min": 567.0,
+        "max": 567.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 100.0,
+        "sd": 0.0,
+        "min": 100.0,
+        "max": 100.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 310.0,
+        "sd": 0.0,
+        "min": 310.0,
+        "max": 310.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 308.0,
+        "sd": 0.0,
+        "min": 308.0,
+        "max": 308.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 618.0,
+        "sd": 0.0,
+        "min": 618.0,
+        "max": 618.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 102.0,
+        "sd": 0.0,
+        "min": 102.0,
+        "max": 102.0
+      }
+    }
+  },
+  {
+    "experimento": "false_sharing",
+    "config": "layout=separate nodes=4 rounds=50",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "app.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.t_trabajo_ms": {
+        "n": 10,
+        "media": 17.8454,
+        "sd": 0.7528436756724469,
+        "min": 17.162,
+        "max": 19.751
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.0208,
+        "sd": 0.0007659416862050705,
+        "min": 0.0196,
+        "max": 0.0224
+      },
+      "nodo_max.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "nodo_max.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      },
+      "nodo_max.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.t_trabajo_ms": {
+        "n": 10,
+        "media": 17.8648,
+        "sd": 0.754650441521695,
+        "min": 17.172,
+        "max": 19.783
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 200.0,
+        "sd": 0.0,
+        "min": 200.0,
+        "max": 200.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 866560.0,
+        "sd": 0.0,
+        "min": 866560.0,
+        "max": 866560.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 16320.0,
+        "sd": 0.0,
+        "min": 16320.0,
+        "max": 16320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 842336.0,
+        "sd": 0.0,
+        "min": 842336.0,
+        "max": 842336.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 41056.0,
+        "sd": 0.0,
+        "min": 41056.0,
+        "max": 41056.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 512.0,
+        "sd": 0.0,
+        "min": 512.0,
+        "max": 512.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 883392.0,
+        "sd": 0.0,
+        "min": 883392.0,
+        "max": 883392.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 1081.0,
+        "sd": 0.0,
+        "min": 1081.0,
+        "max": 1081.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 200.0,
+        "sd": 0.0,
+        "min": 200.0,
+        "max": 200.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 620.0,
+        "sd": 0.0,
+        "min": 620.0,
+        "max": 620.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 616.0,
+        "sd": 0.0,
+        "min": 616.0,
+        "max": 616.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 1236.0,
+        "sd": 0.0,
+        "min": 1236.0,
+        "max": 1236.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 204.0,
+        "sd": 0.0,
+        "min": 204.0,
+        "max": 204.0
+      }
+    }
+  },
+  {
+    "experimento": "false_sharing",
+    "config": "layout=shared nodes=2 rounds=50",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "app.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.t_trabajo_ms": {
+        "n": 10,
+        "media": 22.0369,
+        "sd": 1.1078497140356571,
+        "min": 20.703,
+        "max": 23.621
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.02414,
+        "sd": 0.001093617849159385,
+        "min": 0.0228,
+        "max": 0.0256
+      },
+      "nodo_max.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "nodo_max.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.t_trabajo_ms": {
+        "n": 10,
+        "media": 22.0476,
+        "sd": 1.1099907106718407,
+        "min": 20.714,
+        "max": 23.632
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 100.0,
+        "sd": 0.0,
+        "min": 100.0,
+        "max": 100.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 832640.0,
+        "sd": 8770.050044200305,
+        "min": 820160.0,
+        "max": 845120.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 8160.0,
+        "sd": 0.0,
+        "min": 8160.0,
+        "max": 8160.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 424240.0,
+        "sd": 67.46192341692543,
+        "min": 424144.0,
+        "max": 424336.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 416816.0,
+        "sd": 8702.588120783379,
+        "min": 404432.0,
+        "max": 429200.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 841056.0,
+        "sd": 8770.050044200305,
+        "min": 828576.0,
+        "max": 853536.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 759.0,
+        "sd": 4.216370213557839,
+        "min": 753.0,
+        "max": 765.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 98.0,
+        "sd": 2.1081851067789197,
+        "min": 95.0,
+        "max": 101.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 2.1081851067789197,
+        "min": 1.0,
+        "max": 7.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 96.0,
+        "sd": 2.1081851067789197,
+        "min": 93.0,
+        "max": 99.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 406.0,
+        "sd": 2.1081851067789197,
+        "min": 403.0,
+        "max": 409.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 404.0,
+        "sd": 2.1081851067789197,
+        "min": 401.0,
+        "max": 407.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 810.0,
+        "sd": 4.216370213557839,
+        "min": 804.0,
+        "max": 816.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 198.0,
+        "sd": 2.1081851067789197,
+        "min": 195.0,
+        "max": 201.0
+      }
+    }
+  },
+  {
+    "experimento": "false_sharing",
+    "config": "layout=shared nodes=4 rounds=50",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "app.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "app.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "app.t_trabajo_ms": {
+        "n": 10,
+        "media": 42.8617,
+        "sd": 3.23001341758479,
+        "min": 37.164,
+        "max": 46.566
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.04564,
+        "sd": 0.0032643529220965067,
+        "min": 0.0399,
+        "max": 0.0497
+      },
+      "nodo_max.adquisiciones_trabajo": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.adquisiciones_verificacion": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.barreras_coordinacion": {
+        "n": 10,
+        "media": 51.0,
+        "sd": 0.0,
+        "min": 51.0,
+        "max": 51.0
+      },
+      "nodo_max.incrementos": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      },
+      "nodo_max.rondas": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "nodo_max.t_trabajo_ms": {
+        "n": 10,
+        "media": 42.8684,
+        "sd": 3.233048001155841,
+        "min": 37.164,
+        "max": 46.584
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 200.0,
+        "sd": 0.0,
+        "min": 200.0,
+        "max": 200.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 1692736.0,
+        "sd": 2908.6965389252205,
+        "min": 1686080.0,
+        "max": 1694400.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 16320.0,
+        "sd": 0.0,
+        "min": 16320.0,
+        "max": 16320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 848691.2,
+        "sd": 22.374588760963235,
+        "min": 848640.0,
+        "max": 848704.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 860876.8,
+        "sd": 2886.3219501642575,
+        "min": 854272.0,
+        "max": 862528.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 512.0,
+        "sd": 0.0,
+        "min": 512.0,
+        "max": 512.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 1709568.0,
+        "sd": 2908.6965389252205,
+        "min": 1702912.0,
+        "max": 1711232.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 1478.2,
+        "sd": 1.3984117975602022,
+        "min": 1475.0,
+        "max": 1479.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 202.6,
+        "sd": 0.6992058987801011,
+        "min": 201.0,
+        "max": 203.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 1.4,
+        "sd": 0.6992058987801011,
+        "min": 1.0,
+        "max": 3.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 198.6,
+        "sd": 0.6992058987801011,
+        "min": 197.0,
+        "max": 199.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 818.6,
+        "sd": 0.6992058987801011,
+        "min": 817.0,
+        "max": 819.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 814.6,
+        "sd": 0.6992058987801011,
+        "min": 813.0,
+        "max": 815.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 1633.2,
+        "sd": 1.3984117975602022,
+        "min": 1630.0,
+        "max": 1634.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 402.6,
+        "sd": 0.6992058987801011,
+        "min": 401.0,
+        "max": 403.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=1 modo=lote nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 0.16570000000000001,
+        "sd": 0.11117058963592844,
+        "min": 0.111,
+        "max": 0.474
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00221,
+        "sd": 0.00034785054261852176,
+        "min": 0.0018,
+        "max": 0.0027
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 0.16570000000000001,
+        "sd": 0.11117058963592844,
+        "min": 0.111,
+        "max": 0.474
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 12584.0,
+        "sd": 0.0,
+        "min": 12584.0,
+        "max": 12584.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4544.0,
+        "sd": 0.0,
+        "min": 4544.0,
+        "max": 4544.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 8616.0,
+        "sd": 0.0,
+        "min": 8616.0,
+        "max": 8616.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 13160.0,
+        "sd": 0.0,
+        "min": 13160.0,
+        "max": 13160.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 20.0,
+        "sd": 0.0,
+        "min": 20.0,
+        "max": 20.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 12.0,
+        "sd": 0.0,
+        "min": 12.0,
+        "max": 12.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 10.0,
+        "sd": 0.0,
+        "min": 10.0,
+        "max": 10.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 22.0,
+        "sd": 0.0,
+        "min": 22.0,
+        "max": 22.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=1 modo=repetido nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 0.13920000000000002,
+        "sd": 0.02593496138848528,
+        "min": 0.109,
+        "max": 0.2
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00243,
+        "sd": 0.0005034326612809746,
+        "min": 0.002,
+        "max": 0.0036
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 0.13920000000000002,
+        "sd": 0.02593496138848528,
+        "min": 0.109,
+        "max": 0.2
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 12584.0,
+        "sd": 0.0,
+        "min": 12584.0,
+        "max": 12584.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4544.0,
+        "sd": 0.0,
+        "min": 4544.0,
+        "max": 4544.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 8616.0,
+        "sd": 0.0,
+        "min": 8616.0,
+        "max": 8616.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 13160.0,
+        "sd": 0.0,
+        "min": 13160.0,
+        "max": 13160.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 20.0,
+        "sd": 0.0,
+        "min": 20.0,
+        "max": 20.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 12.0,
+        "sd": 0.0,
+        "min": 12.0,
+        "max": 12.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 10.0,
+        "sd": 0.0,
+        "min": 10.0,
+        "max": 10.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 22.0,
+        "sd": 0.0,
+        "min": 22.0,
+        "max": 22.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=64 modo=lote nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 0.6900000000000001,
+        "sd": 0.19102181376307087,
+        "min": 0.503,
+        "max": 1.024
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00409,
+        "sd": 0.0010754327294422259,
+        "min": 0.0026,
+        "max": 0.0064
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 0.6900000000000001,
+        "sd": 0.19102181376307087,
+        "min": 0.503,
+        "max": 1.024
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 12584.0,
+        "sd": 0.0,
+        "min": 12584.0,
+        "max": 12584.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4544.0,
+        "sd": 0.0,
+        "min": 4544.0,
+        "max": 4544.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 8616.0,
+        "sd": 0.0,
+        "min": 8616.0,
+        "max": 8616.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 13160.0,
+        "sd": 0.0,
+        "min": 13160.0,
+        "max": 13160.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 20.0,
+        "sd": 0.0,
+        "min": 20.0,
+        "max": 20.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 12.0,
+        "sd": 0.0,
+        "min": 12.0,
+        "max": 12.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 10.0,
+        "sd": 0.0,
+        "min": 10.0,
+        "max": 10.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 22.0,
+        "sd": 0.0,
+        "min": 22.0,
+        "max": 22.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=64 modo=repetido nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 8.0557,
+        "sd": 0.6787436187545339,
+        "min": 7.091,
+        "max": 9.243
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.01014,
+        "sd": 0.0007604092465391398,
+        "min": 0.0093,
+        "max": 0.0116
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 8.0557,
+        "sd": 0.6787436187545339,
+        "min": 7.091,
+        "max": 9.243
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 64.0,
+        "sd": 0.0,
+        "min": 64.0,
+        "max": 64.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 21656.0,
+        "sd": 0.0,
+        "min": 21656.0,
+        "max": 21656.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 9080.0,
+        "sd": 0.0,
+        "min": 9080.0,
+        "max": 9080.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 13152.0,
+        "sd": 0.0,
+        "min": 13152.0,
+        "max": 13152.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 22232.0,
+        "sd": 0.0,
+        "min": 22232.0,
+        "max": 22232.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 272.0,
+        "sd": 0.0,
+        "min": 272.0,
+        "max": 272.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 63.0,
+        "sd": 0.0,
+        "min": 63.0,
+        "max": 63.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 138.0,
+        "sd": 0.0,
+        "min": 138.0,
+        "max": 138.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 136.0,
+        "sd": 0.0,
+        "min": 136.0,
+        "max": 136.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 274.0,
+        "sd": 0.0,
+        "min": 274.0,
+        "max": 274.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=8 modo=lote nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 0.17650000000000002,
+        "sd": 0.019259918079899623,
+        "min": 0.156,
+        "max": 0.216
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00223,
+        "sd": 0.00027100635498903796,
+        "min": 0.0019,
+        "max": 0.0028
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 0.17650000000000002,
+        "sd": 0.019259918079899623,
+        "min": 0.156,
+        "max": 0.216
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 12584.0,
+        "sd": 0.0,
+        "min": 12584.0,
+        "max": 12584.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 4544.0,
+        "sd": 0.0,
+        "min": 4544.0,
+        "max": 4544.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 8616.0,
+        "sd": 0.0,
+        "min": 8616.0,
+        "max": 8616.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 13160.0,
+        "sd": 0.0,
+        "min": 13160.0,
+        "max": 13160.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 20.0,
+        "sd": 0.0,
+        "min": 20.0,
+        "max": 20.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 12.0,
+        "sd": 0.0,
+        "min": 12.0,
+        "max": 12.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 10.0,
+        "sd": 0.0,
+        "min": 10.0,
+        "max": 10.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 22.0,
+        "sd": 0.0,
+        "min": 22.0,
+        "max": 22.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  },
+  {
+    "experimento": "localidad",
+    "config": "lecturas=8 modo=repetido nodes=2",
+    "repeticiones": 10,
+    "n": 10,
+    "descartadas": [],
+    "ilegibles": [],
+    "entornos": [
+      {
+        "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+        "nproc": 16,
+        "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "glibc": "glibc 2.39",
+        "python": "3.12.3"
+      }
+    ],
+    "entorno_mezclado": false,
+    "metricas": {
+      "app.accesos_locales": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "app.adquisiciones": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "app.lecturas": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "app.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "app.t_lectura_ms": {
+        "n": 10,
+        "media": 1.1571,
+        "sd": 0.17233394584030418,
+        "min": 0.962,
+        "max": 1.45
+      },
+      "corrida.duracion_s": {
+        "n": 10,
+        "media": 0.00356,
+        "sd": 0.00023664319132398465,
+        "min": 0.003,
+        "max": 0.0038
+      },
+      "nodo_max.accesos_locales": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "nodo_max.adquisiciones": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "nodo_max.lecturas": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "nodo_max.nodo": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "nodo_max.t_lectura_ms": {
+        "n": 10,
+        "media": 1.1571,
+        "sd": 0.17233394584030418,
+        "min": 0.962,
+        "max": 1.45
+      },
+      "red.adq_READ": {
+        "n": 10,
+        "media": 8.0,
+        "sd": 0.0,
+        "min": 8.0,
+        "max": 8.0
+      },
+      "red.adq_WRITE": {
+        "n": 10,
+        "media": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "red.bytes_coherencia": {
+        "n": 10,
+        "media": 13592.0,
+        "sd": 0.0,
+        "min": 13592.0,
+        "max": 13592.0
+      },
+      "red.bytes_coordinacion": {
+        "n": 10,
+        "media": 320.0,
+        "sd": 0.0,
+        "min": 320.0,
+        "max": 320.0
+      },
+      "red.bytes_in": {
+        "n": 10,
+        "media": 5048.0,
+        "sd": 0.0,
+        "min": 5048.0,
+        "max": 5048.0
+      },
+      "red.bytes_otro": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.bytes_out": {
+        "n": 10,
+        "media": 9120.0,
+        "sd": 0.0,
+        "min": 9120.0,
+        "max": 9120.0
+      },
+      "red.bytes_sesion": {
+        "n": 10,
+        "media": 256.0,
+        "sd": 0.0,
+        "min": 256.0,
+        "max": 256.0
+      },
+      "red.bytes_total": {
+        "n": 10,
+        "media": 14168.0,
+        "sd": 0.0,
+        "min": 14168.0,
+        "max": 14168.0
+      },
+      "red.filas": {
+        "n": 10,
+        "media": 48.0,
+        "sd": 0.0,
+        "min": 48.0,
+        "max": 48.0
+      },
+      "red.grants_con_pagina": {
+        "n": 10,
+        "media": 2.0,
+        "sd": 0.0,
+        "min": 2.0,
+        "max": 2.0
+      },
+      "red.grants_sin_pagina": {
+        "n": 10,
+        "media": 7.0,
+        "sd": 0.0,
+        "min": 7.0,
+        "max": 7.0
+      },
+      "red.invals": {
+        "n": 10,
+        "media": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "red.msgs_in": {
+        "n": 10,
+        "media": 26.0,
+        "sd": 0.0,
+        "min": 26.0,
+        "max": 26.0
+      },
+      "red.msgs_out": {
+        "n": 10,
+        "media": 24.0,
+        "sd": 0.0,
+        "min": 24.0,
+        "max": 24.0
+      },
+      "red.msgs_total": {
+        "n": 10,
+        "media": 50.0,
+        "sd": 0.0,
+        "min": 50.0,
+        "max": 50.0
+      },
+      "red.page_xfers": {
+        "n": 10,
+        "media": 3.0,
+        "sd": 0.0,
+        "min": 3.0,
+        "max": 3.0
+      }
+    }
+  }
+]

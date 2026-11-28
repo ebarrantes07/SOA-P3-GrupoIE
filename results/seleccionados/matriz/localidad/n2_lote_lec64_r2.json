@@ -1,0 +1,73 @@
+{
+ "experimento": "localidad",
+ "config": {
+  "nodes": 2,
+  "modo": "lote",
+  "lecturas": 64
+ },
+ "repeticion": 2,
+ "salida": {
+  "nodo": "1",
+  "rol": "lector",
+  "modo": "lote",
+  "lecturas": "64",
+  "accesos_locales": "64",
+  "adquisiciones": "1",
+  "t_lectura_ms": "1.024"
+ },
+ "salida_nodo": 1,
+ "salida_por_nodo": [
+  {
+   "nodo": "0",
+   "rol": "escritor",
+   "modo": "lote",
+   "lecturas": "64",
+   "accesos_locales": "0",
+   "adquisiciones": "1",
+   "t_lectura_ms": "0.000"
+  },
+  {
+   "nodo": "1",
+   "rol": "lector",
+   "modo": "lote",
+   "lecturas": "64",
+   "accesos_locales": "64",
+   "adquisiciones": "1",
+   "t_lectura_ms": "1.024"
+  }
+ ],
+ "codigos_salida": {
+  "coordinador": 0,
+  "nodos": [
+   0,
+   0
+  ]
+ },
+ "log": "n2_lote_lec64_r2.csv",
+ "entorno": {
+  "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+  "nproc": 16,
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc": "glibc 2.39",
+  "python": "3.12.3"
+ },
+ "comando": [
+  "/home/ebarrantes/SOA-P3-GrupoIE/app_rw",
+  "--port",
+  "41033",
+  "--nodes",
+  "2",
+  "--timeout-ms",
+  "30000",
+  "--reads",
+  "64",
+  "--access",
+  "batch",
+  "--id",
+  "<i>"
+ ],
+ "inicio_utc": "2026-11-27T00:23:41Z",
+ "duracion_s": 0.0042,
+ "calentamiento_descartado": "calentamiento/n2_lote_lec64.txt"
+}

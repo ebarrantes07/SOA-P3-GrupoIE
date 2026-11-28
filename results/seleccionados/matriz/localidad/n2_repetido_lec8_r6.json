@@ -1,0 +1,73 @@
+{
+ "experimento": "localidad",
+ "config": {
+  "nodes": 2,
+  "modo": "repetido",
+  "lecturas": 8
+ },
+ "repeticion": 6,
+ "salida": {
+  "nodo": "1",
+  "rol": "lector",
+  "modo": "repetido",
+  "lecturas": "8",
+  "accesos_locales": "8",
+  "adquisiciones": "8",
+  "t_lectura_ms": "1.005"
+ },
+ "salida_nodo": 1,
+ "salida_por_nodo": [
+  {
+   "nodo": "0",
+   "rol": "escritor",
+   "modo": "repetido",
+   "lecturas": "8",
+   "accesos_locales": "0",
+   "adquisiciones": "1",
+   "t_lectura_ms": "0.000"
+  },
+  {
+   "nodo": "1",
+   "rol": "lector",
+   "modo": "repetido",
+   "lecturas": "8",
+   "accesos_locales": "8",
+   "adquisiciones": "8",
+   "t_lectura_ms": "1.005"
+  }
+ ],
+ "codigos_salida": {
+  "coordinador": 0,
+  "nodos": [
+   0,
+   0
+  ]
+ },
+ "log": "n2_repetido_lec8_r6.csv",
+ "entorno": {
+  "uname": "Linux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1260P",
+  "nproc": 16,
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "glibc": "glibc 2.39",
+  "python": "3.12.3"
+ },
+ "comando": [
+  "/home/ebarrantes/SOA-P3-GrupoIE/app_rw",
+  "--port",
+  "38353",
+  "--nodes",
+  "2",
+  "--timeout-ms",
+  "30000",
+  "--reads",
+  "8",
+  "--access",
+  "repeated",
+  "--id",
+  "<i>"
+ ],
+ "inicio_utc": "2026-11-27T00:23:41Z",
+ "duracion_s": 0.0035,
+ "calentamiento_descartado": "calentamiento/n2_repetido_lec8.txt"
+}

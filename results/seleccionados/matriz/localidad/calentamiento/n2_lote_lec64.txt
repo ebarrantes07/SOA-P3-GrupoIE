@@ -1,0 +1,8 @@
+calentamiento de localidad/n2_lote_lec64: descartado antes de medir
+códigos: {"coordinador": 0, "nodos": [0, 0]}
+duración: 0.005 s
+
+-- nodo 0
+rw: nodo=0 rol=escritor modo=lote lecturas=64 accesos_locales=0 adquisiciones=1 t_lectura_ms=0.000
+-- nodo 1
+rw: nodo=1 rol=lector modo=lote lecturas=64 accesos_locales=64 adquisiciones=1 t_lectura_ms=0.633
